@@ -31,6 +31,8 @@ add_executable(${PROJECT_NAME}
     scene/shape/mesh.cpp
     scene/shape/triangle.cpp
     util/CS123Common.cpp
+    scene/shape/SPmesh.cpp
+    scene/shape/HEmesh.cpp
 
     pathtracer.h
     scene/scene.h
@@ -52,6 +54,8 @@ add_executable(${PROJECT_NAME}
     scene/shape/triangle.h
     util/tiny_obj_loader.h
     BVH/vector3.h
+    scene/shape/SPmesh.h
+    scene/shape/HEmesh.h
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE

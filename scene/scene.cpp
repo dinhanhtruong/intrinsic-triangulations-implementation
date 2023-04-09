@@ -1,19 +1,20 @@
 #include "scene.h"
 
 #include "shape/Sphere.h"
+#include "shape/spmesh.h"
 
 #include <util/CS123XmlSceneParser.h>
 
 #include <util/CS123Common.h>
 
-#include <Eigen/Geometry>
+//#include <Eigen/Geometry>
 
 #include <iostream>
 
-#include <Eigen/StdVector>
+//#include <Eigen/StdVector>
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include "util/tiny_obj_loader.h"
+//#define TINYOBJLOADER_IMPLEMENTATION
+//#include "util/tiny_obj_loader.h"
 
 using namespace Eigen;
 
@@ -233,6 +234,11 @@ Mesh *Scene::loadMesh(std::string filePath, const Affine3f &transform, const std
             materialIds,
             materials);
     m->setTransform(transform);
+
+    SPmesh mesh;
+    mesh.loadFromFile(filePath);
+    mesh.initFromVectors(vertices, faces);
+
     return m;
 }
 
