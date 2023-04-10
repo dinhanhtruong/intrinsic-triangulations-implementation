@@ -170,6 +170,9 @@ Mesh *Scene::loadMesh(std::string filePath, const Affine3f &transform, const std
     std::vector<int> materialIds;
     std::vector<Vector3i> faces;
 
+    std::vector<Vector3i> heFaces;
+    std::vector<Vector3f> heVerts;
+
     //TODO populate vectors and use tranform
     for(size_t s = 0; s < shapes.size(); s++) {
         size_t index_offset = 0;
@@ -177,8 +180,12 @@ Mesh *Scene::loadMesh(std::string filePath, const Affine3f &transform, const std
             unsigned int fv = shapes[s].mesh.num_face_vertices[f];
 
             Vector3i face;
+            Vector3i heFace;
             for(size_t v = 0; v < fv; v++) {
                 tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+
+                heFace[v] = idx.vertex_index;
+
                 tinyobj::real_t vx = attrib.vertices[3*idx.vertex_index+0];
                 tinyobj::real_t vy = attrib.vertices[3*idx.vertex_index+1];
                 tinyobj::real_t vz = attrib.vertices[3*idx.vertex_index+2];
@@ -220,9 +227,16 @@ Mesh *Scene::loadMesh(std::string filePath, const Affine3f &transform, const std
             faces.push_back(face);
             materialIds.push_back(shapes[s].mesh.material_ids[f]);
 
+            heFaces.push_back(heFace);
+
             index_offset += fv;
         }
     }
+
+    for (size_t i = 0; i < attrib.vertices.size(); i += 3) {
+        heVerts.emplace_back(attrib.vertices[i], attrib.vertices[i + 1], attrib.vertices[i + 2]);
+    }
+
     std::cout << "Loaded " << faces.size() << " faces" << std::endl;
 
     Mesh *m = new Mesh;
@@ -236,8 +250,8 @@ Mesh *Scene::loadMesh(std::string filePath, const Affine3f &transform, const std
     m->setTransform(transform);
 
     SPmesh mesh;
-    mesh.loadFromFile(filePath);
-    mesh.initFromVectors(vertices, faces);
+//    mesh.loadFromFile(filePath);
+    mesh.initFromVectors(heVerts, heFaces);
 
     return m;
 }

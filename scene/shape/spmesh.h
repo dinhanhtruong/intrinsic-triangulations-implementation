@@ -20,39 +20,40 @@ typedef struct InHalfedge {
     std::shared_ptr<InHalfedge> twin;
     std::shared_ptr<InEdge> edge;
     std::shared_ptr<InFace> face;
+    float angle; // angle relative to the reference direction of the vertex at the base of the half angle
 } InHalfedge;
 
 typedef struct InVertex {
     std::shared_ptr<InHalfedge> halfedge;
     Eigen::Vector3f pos;
-    std::shared_ptr<ExVertex> exVertex;
-    std::shared_ptr<ExFace> exFace;
+    std::shared_ptr<ExVertex> exVertex; // (only set for original vertices of the input)
+    std::shared_ptr<ExFace> exFace; // null (only set for new vertices without extrinsic counterpart)
+    float angleSum; // (big theta in equation 1)
+    Eigen::Vector3f barycentricPos; //(of this vertex in the extrinsic triangle it’s contained in)
 } InVertIn;
 
 typedef struct InEdge {
     std::shared_ptr<InHalfedge> halfedge;
-//    float error;
-//    Eigen::Vector3f newPoint;
-//    float length;
-//    bool collapse;
+    float length;
 } InEdge;
 
 typedef struct InFace {
     std::shared_ptr<InHalfedge> halfedge;
 } InFace;
 
+
+
 class SPmesh
 {
 public:
-//    EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
-
+    // SPmesh();
     void initFromVectors(const std::vector<Eigen::Vector3f> &vertices,
                          const std::vector<Eigen::Vector3i> &faces);
-    void loadFromFile(const std::string &filePath);
     void loadHalfEdges();
     void validate();
 
 private:
+    // validator helpers
     void checkCircular(const std::shared_ptr<InHalfedge> &halfedge);
     void checkTwin(const std::shared_ptr<InHalfedge> &halfedge);
     void checkFaces();
@@ -60,6 +61,8 @@ private:
 //    int getDegree(const std::shared_ptr<InVertex> &v);
 //    Eigen::Vector3f getNormal(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
 //    float getArea(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
+
+
 
     std::vector<Eigen::Vector3f> _vertices;
     std::vector<Eigen::Vector3i> _facesList;

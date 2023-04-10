@@ -116,6 +116,7 @@ Vector3f PathTracer::traceRay(const Ray& r, const Scene& scene, bool countEmitte
 
     // find first intersection (if any) of ray w/ scene geometry
     if(scene.getIntersection(rayOut, &insct)) {
+        return Vector3f(1, 1, 1);
 
         Vector3f radianceIn(0,0,0); // incoming radiance Li(r_o, r_d) toward the origin of the ray r from the intersection
 
