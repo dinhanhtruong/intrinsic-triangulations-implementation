@@ -20,8 +20,8 @@ void SPmesh::initFromVectors(const vector<Vector3f> &vertices,
                            const vector<Vector3i> &faces)
 {
     // Copy vertices and faces into internal vector
-//    _vertices = vertices;
-//    _facesList    = faces;
+   _vertices = vertices;
+   _facesList    = faces;
 
     _verts = unordered_set<shared_ptr<InVertex>>();
     _edges = unordered_set<shared_ptr<InEdge>>();
@@ -42,55 +42,68 @@ void SPmesh::initFromVectors(const vector<Vector3f> &vertices,
     _exMesh.init(vertices.size(), faces.size());
 
     loadHalfEdges();
+    initSignpost();
 }
 
-// void SPmesh::loadFromFile(const string &filePath)
-// {
-//     tinyobj::attrib_t attrib;
-//     vector<tinyobj::shape_t> shapes;
-//     vector<tinyobj::material_t> materials;
+Vector3f SPmesh::getVPos(shared_ptr<InVertex> v) {
+    return v->exVertex->pos;
+}
 
-//     QFileInfo info(QString(filePath.c_str()));
-//     string err;
-//     bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err,
-//                                 info.absoluteFilePath().toStdString().c_str(), (info.absolutePath().toStdString() + "/").c_str(), true);
-//     if (!err.empty()) {
-//         cerr << err << endl;
-//     }
+// updates the signpost angle of halfedge ik in triangle ijk
+// ij must already have a valid angle (bc angle of ik depends on angle of ij)
+void SPmesh::updateSignpost(shared_ptr<InHalfedge> ij) {
+    // given the 'right' edge of the face originiating from vertex i, get the left edge
+    Vector3f ijEdge = getVPos(ij->twin->v) - getVPos(ij->v);
+    shared_ptr<InHalfedge> ik = ij->next->next->twin;
+    Vector3f ikEdge = getVPos(ik->v) - getVPos(ik->v);
+    float theta_jk = getAngle(ijEdge, ikEdge); // (relative) angle of opposite edge jk (i.e. angle between ij and ik)
+    ik->angle = ij->angle +  (2*M_PI * theta_jk)/ij->v->bigTheta; // set angle of jk relative to reference of this vertex
+}
 
-//     if (!ret) {
-//         cerr << "Failed to load/parse .obj file" << endl;
-//         return;
-//     }
 
-//     for(size_t s = 0; s < shapes.size(); s++) {
-//         size_t index_offset = 0;
-//         for(size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
-//             unsigned int fv = shapes[s].mesh.num_face_vertices[f];
+float SPmesh::getAngle(Vector3f v1, Vector3f v2) {
+    return acos(v1.normalized().dot(v2.normalized()));
+}
 
-//             Vector3i face;
-//             for(size_t v = 0; v < fv; v++) {
-//                 tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+void SPmesh::initSignpost() {
+    for (shared_ptr<InEdge> e : _edges) {
+        // get vertex positions of endpoints
+        shared_ptr<InVertex> v0 = e->halfedge->v;
+        shared_ptr<InVertex> v1 = e->halfedge->twin->v;
+        e->length = (getVPos(v1) - getVPos(v0)).norm();
+    }
+    
+    for (shared_ptr<InVertex> v: _verts) {
+        float bigTheta_i = 0.f;
+        shared_ptr<InHalfedge> curr = v->halfedge->next->next->twin;
+        Vector3f rightEdge = getVPos(v->halfedge->twin->v) - getVPos(v);
+        do {
+            Vector3f leftEdge = getVPos(curr->twin->v) - getVPos(curr->v);
+            float angle = getAngle(rightEdge, leftEdge);
+            bigTheta_i += angle;
+            rightEdge = leftEdge;
+            curr = curr->next->next->twin;
+        } while (curr != v->halfedge->next->next->twin);
+        v->bigTheta = bigTheta_i;
 
-//                 face[v] = idx.vertex_index;
+        float phi_ij0 = 0.f;
+        curr = v->halfedge;
+        curr->angle = 0.f;
+        while (curr->next->next->twin != v->halfedge) {
+            updateSignpost(curr);
+            curr = curr->next->next->twin;
+        } 
+    }
 
-//             }
-//             _facesList.push_back(face);
+    cout << "initialized signpost values" << endl;
+}
 
-//             index_offset += fv;
-//         }
-//     }
-//     for (size_t i = 0; i < attrib.vertices.size(); i += 3) {
-//         _vertices.emplace_back(attrib.vertices[i], attrib.vertices[i + 1], attrib.vertices[i + 2]);
-//     }
-//     cout << "Loaded " << _faces.size() << " faces and " << _vertices.size() << " vertices" << endl;
-// }
 
 void SPmesh::loadHalfEdges() {
-    cout << _vertices.size() << endl;
+    cout << "vertices " << _vertices.size() << endl;
     unordered_map<int, shared_ptr<InVertex>> inVerts;
     for (int i = 0; i < _vertices.size(); i++) {
-        shared_ptr<InVertex> v = make_shared<InVertex>(InVertex{nullptr, _vertices[i], nullptr});
+        shared_ptr<InVertex> v = make_shared<InVertex>(InVertex{nullptr, nullptr});
         shared_ptr<ExVertex> exv = _exMesh.makeVertex(nullptr, _vertices[i], v);
         v->exVertex = exv;
         inVerts.insert({i, v});
@@ -116,7 +129,6 @@ void SPmesh::loadHalfEdges() {
             }
         }
         if (twin != nullptr) {
-            cout << " Hello" << endl;
             h3 = make_shared<InHalfedge>(InHalfedge{v3, nullptr, twin, twin->edge, nullptr});
             shared_ptr<ExHalfedge> exTwin = inToExHalfedge.at(twin);
             exh3 = _exMesh.makeHalfedge(v3->exVertex, nullptr, exTwin, exTwin->edge, nullptr);
@@ -149,7 +161,6 @@ void SPmesh::loadHalfEdges() {
             }
         }
         if (twin != nullptr) {
-            cout << " Hello" << endl;
             h2 = make_shared<InHalfedge>(InHalfedge{v2, h3, twin, twin->edge, face});
             shared_ptr<ExHalfedge> exTwin = inToExHalfedge.at(twin);
             exh2 = _exMesh.makeHalfedge(v2->exVertex, exh3, exTwin, exTwin->edge, exFace);
@@ -179,7 +190,6 @@ void SPmesh::loadHalfEdges() {
             }
         }
         if (twin != nullptr) {
-            cout << " Hello" << endl;
             h1 = make_shared<InHalfedge>(InHalfedge{v1, h2, twin, twin->edge, face});
             shared_ptr<ExHalfedge> exTwin = inToExHalfedge.at(twin);
             exh1 = _exMesh.makeHalfedge(v1->exVertex, exh2, exTwin, exTwin->edge, exFace);

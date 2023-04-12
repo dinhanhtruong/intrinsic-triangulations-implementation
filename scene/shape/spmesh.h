@@ -21,14 +21,14 @@ typedef struct InHalfedge {
     std::shared_ptr<InEdge> edge;
     std::shared_ptr<InFace> face;
     float angle; // angle relative to the reference direction of the vertex at the base of the half angle
+    float length;
 } InHalfedge;
 
 typedef struct InVertex {
     std::shared_ptr<InHalfedge> halfedge;
-    Eigen::Vector3f pos;
     std::shared_ptr<ExVertex> exVertex; // (only set for original vertices of the input)
     std::shared_ptr<ExFace> exFace; // null (only set for new vertices without extrinsic counterpart)
-    float angleSum; // (big theta in equation 1)
+    float bigTheta; // (big theta in equation 1)
     Eigen::Vector3f barycentricPos; //(of this vertex in the extrinsic triangle it’s contained in)
 } InVertIn;
 
@@ -50,6 +50,7 @@ public:
     void initFromVectors(const std::vector<Eigen::Vector3f> &vertices,
                          const std::vector<Eigen::Vector3i> &faces);
     void loadHalfEdges();
+    void initSignpost();
     void validate();
 
 private:
@@ -61,7 +62,10 @@ private:
 //    int getDegree(const std::shared_ptr<InVertex> &v);
 //    Eigen::Vector3f getNormal(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
 //    float getArea(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
+    float getAngle(Eigen::Vector3f v1, Eigen::Vector3f v2);
+    void updateSignpost(std::shared_ptr<InHalfedge> ij);
 
+    Eigen::Vector3f getVPos(std::shared_ptr<InVertex> v);
 
 
     std::vector<Eigen::Vector3f> _vertices;
