@@ -59,13 +59,20 @@ private:
     void checkTwin(const std::shared_ptr<InHalfedge> &halfedge);
     void checkFaces();
     void checkVertices();
+
+    // signpost algos & helpers
 //    int getDegree(const std::shared_ptr<InVertex> &v);
 //    Eigen::Vector3f getNormal(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
 //    float getArea(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
     float getAngle(Eigen::Vector3f v1, Eigen::Vector3f v2);
     void updateSignpost(std::shared_ptr<InHalfedge> ij);
-
     Eigen::Vector3f getVPos(std::shared_ptr<InVertex> v);
+    std::shared_ptr<InEdge> getEdge(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1) const;
+    float distance(float l_12, float l_23, float l_31, const Eigen::Vector3f p, const Eigen::Vector3f q);
+    void eraseTriangle(std::shared_ptr<InFace> tri);
+    std::shared_ptr<InFace> insertTriangle(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1, std::shared_ptr<InVertex> v2);
+    void insertVertex(std::shared_ptr<InFace> face, Eigen::Vector3f& barycentricCoords);
+
 
 
     std::vector<Eigen::Vector3f> _vertices;

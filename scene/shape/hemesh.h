@@ -2,6 +2,8 @@
 
 #include <vector>
 #include <unordered_set>
+#include <memory>
+
 
 #include "Eigen/StdVector"
 #include "Eigen/Geometry"
