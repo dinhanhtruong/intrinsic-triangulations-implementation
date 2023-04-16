@@ -65,7 +65,9 @@ private:
 //    Eigen::Vector3f getNormal(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
 //    float getArea(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
     float getAngle(Eigen::Vector3f v1, Eigen::Vector3f v2);
-    void updateSignpost(std::shared_ptr<InHalfedge> ij);
+    float getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki);
+    float argument(Eigen::Vector2f u, Eigen::Vector3f v);
+    void updateSignpost(std::shared_ptr<InHalfedge> h_ij);
     Eigen::Vector3f getVPos(std::shared_ptr<InVertex> v);
     std::shared_ptr<InEdge> getEdge(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1) const;
     float distance(float l_12, float l_23, float l_31, const Eigen::Vector3f p, const Eigen::Vector3f q);

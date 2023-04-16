@@ -50,19 +50,38 @@ Vector3f SPmesh::getVPos(shared_ptr<InVertex> v) {
 }
 
 // updates the signpost angle of halfedge ik in triangle ijk
-// ij must already have a valid angle (bc angle of ik depends on angle of ij)
-void SPmesh::updateSignpost(shared_ptr<InHalfedge> ij) {
-    // given the 'right' edge of the face originiating from vertex i, get the left edge
-    Vector3f ijEdge = getVPos(ij->twin->v) - getVPos(ij->v);
-    shared_ptr<InHalfedge> ik = ij->next->next->twin;
-    Vector3f ikEdge = getVPos(ik->v) - getVPos(ik->v);
-    float theta_jk = getAngle(ijEdge, ikEdge); // (relative) angle of opposite edge jk (i.e. angle between ij and ik)
-    ik->angle = ij->angle +  (2*M_PI * theta_jk)/ij->v->bigTheta; // set angle of jk relative to reference of this vertex
+// ij must already have a valid angle (bc angle of ik depends on angle of ij). Edge lengths of ijk must also be valid
+void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
+    // given the 'right' halfedge ij of the face originiating from vertex i, get the left halfedge ik
+    shared_ptr<InHalfedge> h_ik = h_ij->next->next->twin;
+    // get edge lengths of triangle
+    float l_ij = h_ij->edge->length;
+    float l_jk = h_ij->next->edge->length;
+    float l_ki = h_ij->next->next->edge->length;
+    // update angle (phi) of halfedge ik
+    float theta_i_jk = getAngleFromEdgeLengths(l_ij, l_jk, l_ki); // euclidean angle of opposite edge ik relative to ij (i.e. interior angle at vertex i between ij and ik)
+    h_ik->angle = h_ij->angle +  (2*M_PI * theta_i_jk)/h_ij->v->bigTheta;
 }
 
+// for a triangle with edge lengths l_ij, l_jk, l_ki, returns the interior angle at vertex i
+float SPmesh::getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki) {
+    // see fig. 9 of paper
+    return acos( (pow(l_ij, 2) + pow(l_ki, 2) - pow(l_jk, 2)) / (2*l_ij*l_ki) );
+}
 
-float SPmesh::getAngle(Vector3f v1, Vector3f v2) {
-    return acos(v1.normalized().dot(v2.normalized()));
+// returns the angle between two 3-vectors in [0, pi]
+float SPmesh::getAngle(Vector3f u, Vector3f v) {
+    return acos(u.normalized().dot(v.normalized()));
+}
+
+// returns the ccw angle FROM vector u TO vector v in the range [0, 2*pi). Imagine fixing u as the x-axis in R^2 and going ccw to find v.
+float SPmesh::argument(Vector2f u, Vector3f v) {
+    // adapted from  https://stackoverflow.com/questions/40286650/how-to-get-the-anti-clockwise-angle-between-two-2d-vectors
+    float angle = atan2(u[0]*v[1] - u[1]*v[0], u[0]*v[0] + u[1]*v[1]);
+    if (angle < 0) {
+        angle += 2*M_PI;
+    }
+    return angle;
 }
 
 void SPmesh::initSignpost() {
@@ -101,13 +120,16 @@ void SPmesh::initSignpost() {
 
 
 void SPmesh::eraseTriangle(shared_ptr<InFace> tri) {
-    // remove half edges in face and set references to them to null
+    // remove all half edges in face and set any references to them to null
     shared_ptr<InHalfedge> startHalfEdge = tri->halfedge;
     shared_ptr<InHalfedge> currHalfEdge = startHalfEdge;
     do {
         currHalfEdge->twin->twin = nullptr;
         // set the twin as the representative half edge of InEdge
         currHalfEdge->edge->halfedge = currHalfEdge->twin;
+        // TODO remove inEdge entirely if it no longer contains half edges (e.g. if two adjacent faces are erased, middle edge is also erased)
+
+
         _halfedges.erase(currHalfEdge);
         currHalfEdge = currHalfEdge->next;
     } while(currHalfEdge != startHalfEdge);
@@ -117,8 +139,15 @@ void SPmesh::eraseTriangle(shared_ptr<InFace> tri) {
 
 // HELPER: returns the InEdge containing v0 and v1 as endpoints or nullptr if it doesn't exist
 shared_ptr<InEdge> SPmesh::getEdge(shared_ptr<InVertex> v0, shared_ptr<InVertex> v1) const {
-    // TODO: traverse 1-ring neighborhood of v0 and check incident vertices
-
+    // traverse 1-ring neighborhood of v0 and check incident vertices
+    shared_ptr<InHalfedge> currHalfEdge = v0->halfedge;
+    do {
+        // return current half edge if it belongs to edge (v0, v1)
+        if (currHalfEdge->next->v == v1)
+            return currHalfEdge->edge;
+        // advance clockwise
+        currHalfEdge = currHalfEdge->twin->next;
+    } while (currHalfEdge != v0->halfedge);
     return nullptr;
 }
 
@@ -168,9 +197,18 @@ float SPmesh::distance(float l_12, float l_23, float l_31, const Vector3f p, con
     return sqrt(d);
 }
 
-void updateVertex() {
+// updates the signpost angles for every edge incident to the given vertex i.
+// specifically, updates both the angle phi_ij and phi_ji for every edge (i,j)
+//void SPmesh::updateVertex(shared_ptr<InVertex> i) {
+//    // update incoming angles phi_ji
+//    shared_ptr<InHalfedge> currHalfEdge = i->halfedge;
+//    do {
+//        updateSignpost();
+//        currHalfEdge = currHalfEdge->twin->next;
+//    } while (currHalfEdge != i->halfedge);
 
-}
+//    auto [exTriangle, barycentricCoords] = traceFromVertex();
+//}
 
 // inserts a new intrinsic vertex in the given intrinsic face ijk at the position specified using barycentric coords
 // barycentric coords must be positive and sum to 1
