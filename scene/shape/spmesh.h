@@ -21,7 +21,7 @@ typedef struct InHalfedge {
     std::shared_ptr<InEdge> edge;
     std::shared_ptr<InFace> face;
     float angle; // angle relative to the reference direction of the vertex at the base of the half angle
-    float length;
+//    float length; // should be the same as InEdge->length
 } InHalfedge;
 
 typedef struct InVertex {
@@ -54,27 +54,47 @@ public:
     void validate();
 
 private:
-    // validator helpers
+    /// validator helpers
     void checkCircular(const std::shared_ptr<InHalfedge> &halfedge);
     void checkTwin(const std::shared_ptr<InHalfedge> &halfedge);
     void checkFaces();
     void checkVertices();
 
-    // signpost algos & helpers
+    /// signpost algos & helpers
+    // old code
 //    int getDegree(const std::shared_ptr<InVertex> &v);
 //    Eigen::Vector3f getNormal(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
 //    float getArea(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
+
+    // math/connectivity heleprs
     float getAngle(Eigen::Vector3f v1, Eigen::Vector3f v2);
     float getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki);
     float argument(Eigen::Vector2f u, Eigen::Vector3f v);
-    void updateSignpost(std::shared_ptr<InHalfedge> h_ij);
     Eigen::Vector3f getVPos(std::shared_ptr<InVertex> v);
     std::shared_ptr<InEdge> getEdge(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1) const;
-    float distance(float l_12, float l_23, float l_31, const Eigen::Vector3f p, const Eigen::Vector3f q);
+    std::shared_ptr<InHalfedge> getHalfEdgeWithSource(std::shared_ptr<InEdge> edge, std::shared_ptr<InVertex> sourceVertex) const;
     void eraseTriangle(std::shared_ptr<InFace> tri);
     std::shared_ptr<InFace> insertTriangle(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1, std::shared_ptr<InVertex> v2);
-    void insertVertex(std::shared_ptr<InFace> face, Eigen::Vector3f& barycentricCoords);
+
+    // algos (in order)
+    void updateSignpost(std::shared_ptr<InHalfedge> h_ij);
+    /// (note from Anh): my part needs traceFromVertex to return an additional output not explicitly specified in the pseudocode.
+    /// The inputs are:
+    ///     (1) starting point of the trace query at an intrinsic vertex v_i
+    ///     (2) distance to trace
+    ///     (3) direction to trace along as an angle in [0, 2*pi) relative to the reference direction at v_i
+    /// The outputs in order should be:
+    ///     (1) pointer to the extrinsic face containing the end point of the trace,
+    ///     (2) barycentric coords of the end point
+    ///     (3)** (this is the extra one my function needs):
+    ///         the angle (in [0, 2*pi)) of the trace direction in the coordinate system of the final extrinsic triangle (i.e. relative to the reference of the extrinsic triangle)
+    ///         I think this is a quantity you'll prob keep track of anyways in your algo bc the paper mentions transforming to new a triangle's coordinate system every time
+    ///         the traced ray intersects an edge
+    std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> traceFromVertex(std::shared_ptr<InVertex> v_i, float distance, float angle);
     void updateVertex(std::shared_ptr<InVertex> i);
+    float distance(float l_12, float l_23, float l_31, const Eigen::Vector3f p, const Eigen::Vector3f q);
+    void insertVertex(std::shared_ptr<InFace> face, Eigen::Vector3f& barycentricCoords);
+
 
 
 

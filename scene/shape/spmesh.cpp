@@ -45,212 +45,6 @@ void SPmesh::initFromVectors(const vector<Vector3f> &vertices,
     initSignpost();
 }
 
-Vector3f SPmesh::getVPos(shared_ptr<InVertex> v) {
-    return v->exVertex->pos;
-}
-
-// updates the signpost angle of halfedge ik in triangle ijk
-// ij must already have a valid angle (bc angle of ik depends on angle of ij). Edge lengths of ijk must also be valid
-void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
-    // given the 'right' halfedge ij of the face originiating from vertex i, get the left halfedge ik
-    shared_ptr<InHalfedge> h_ik = h_ij->next->next->twin;
-    // get edge lengths of triangle
-    float l_ij = h_ij->edge->length;
-    float l_jk = h_ij->next->edge->length;
-    float l_ki = h_ij->next->next->edge->length;
-    // update angle (phi) of halfedge ik
-    float theta_i_jk = getAngleFromEdgeLengths(l_ij, l_jk, l_ki); // euclidean angle of opposite edge ik relative to ij (i.e. interior angle at vertex i between ij and ik)
-    h_ik->angle = h_ij->angle +  (2*M_PI * theta_i_jk)/h_ij->v->bigTheta;
-}
-
-// for a triangle with edge lengths l_ij, l_jk, l_ki, returns the interior angle at vertex i
-float SPmesh::getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki) {
-    // see fig. 9 of paper
-    return acos( (pow(l_ij, 2) + pow(l_ki, 2) - pow(l_jk, 2)) / (2*l_ij*l_ki) );
-}
-
-// returns the angle between two 3-vectors in [0, pi]
-float SPmesh::getAngle(Vector3f u, Vector3f v) {
-    return acos(u.normalized().dot(v.normalized()));
-}
-
-// returns the ccw angle FROM vector u TO vector v in the range [0, 2*pi). Imagine fixing u as the x-axis in R^2 and going ccw to find v.
-float SPmesh::argument(Vector2f u, Vector3f v) {
-    // adapted from  https://stackoverflow.com/questions/40286650/how-to-get-the-anti-clockwise-angle-between-two-2d-vectors
-    float angle = atan2(u[0]*v[1] - u[1]*v[0], u[0]*v[0] + u[1]*v[1]);
-    if (angle < 0) {
-        angle += 2*M_PI;
-    }
-    return angle;
-}
-
-void SPmesh::initSignpost() {
-    for (shared_ptr<InEdge> e : _edges) {
-        // get vertex positions of endpoints
-        shared_ptr<InVertex> v0 = e->halfedge->v;
-        shared_ptr<InVertex> v1 = e->halfedge->twin->v;
-        e->length = (getVPos(v1) - getVPos(v0)).norm();
-    }
-    
-    for (shared_ptr<InVertex> v: _verts) {
-        float bigTheta_i = 0.f;
-        shared_ptr<InHalfedge> curr = v->halfedge->next->next->twin;
-        Vector3f rightEdge = getVPos(v->halfedge->twin->v) - getVPos(v);
-        do {
-            Vector3f leftEdge = getVPos(curr->twin->v) - getVPos(curr->v);
-            float angle = getAngle(rightEdge, leftEdge);
-            bigTheta_i += angle;
-            rightEdge = leftEdge;
-            curr = curr->next->next->twin;
-        } while (curr != v->halfedge->next->next->twin);
-        v->bigTheta = bigTheta_i;
-
-        float phi_ij0 = 0.f;
-        curr = v->halfedge;
-        curr->angle = 0.f;
-        while (curr->next->next->twin != v->halfedge) {
-            updateSignpost(curr);
-            curr = curr->next->next->twin;
-        } 
-    }
-
-    cout << "initialized signpost values" << endl;
-}
-
-
-
-void SPmesh::eraseTriangle(shared_ptr<InFace> tri) {
-    // remove all half edges in face and set any references to them to null
-    shared_ptr<InHalfedge> startHalfEdge = tri->halfedge;
-    shared_ptr<InHalfedge> currHalfEdge = startHalfEdge;
-    do {
-        currHalfEdge->twin->twin = nullptr;
-        // set the twin as the representative half edge of InEdge
-        currHalfEdge->edge->halfedge = currHalfEdge->twin;
-        // TODO remove inEdge entirely if it no longer contains half edges (e.g. if two adjacent faces are erased, middle edge is also erased)
-
-
-        _halfedges.erase(currHalfEdge);
-        currHalfEdge = currHalfEdge->next;
-    } while(currHalfEdge != startHalfEdge);
-
-    _faces.erase(tri);
-}
-
-// HELPER: returns the InEdge containing v0 and v1 as endpoints or nullptr if it doesn't exist
-shared_ptr<InEdge> SPmesh::getEdge(shared_ptr<InVertex> v0, shared_ptr<InVertex> v1) const {
-    // traverse 1-ring neighborhood of v0 and check incident vertices
-    shared_ptr<InHalfedge> currHalfEdge = v0->halfedge;
-    do {
-        // return current half edge if it belongs to edge (v0, v1)
-        if (currHalfEdge->next->v == v1)
-            return currHalfEdge->edge;
-        // advance clockwise
-        currHalfEdge = currHalfEdge->twin->next;
-    } while (currHalfEdge != v0->halfedge);
-    return nullptr;
-}
-
-// HELPER: inserts an intrinsic triangle whose vertices are v0, v1, v2. Assumes v0,v1,v2 are provided in ccw order
-// does not assume that there exist faces adjacent to the triangle (v0,v1,v2)
-shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<InVertex> v1, shared_ptr<InVertex> v2) {
-    // make 3 half edges. link half edges to their existing twins (if any)
-    shared_ptr<InHalfedge> newHalfEdge;
-    auto vertices = vector{v0, v1, v2};
-    for (int i = 0; i < 3; i++) {
-        shared_ptr<InVertex> currVertex = vertices[i];
-        shared_ptr<InEdge> edge = getEdge(vertices[i], vertices[(i+1) % 3]); // edge (i, i->next) containing halfedge to be constructed (can be null)
-        shared_ptr<InHalfedge> twin = (edge == nullptr) ? nullptr : edge->halfedge; // twin of halfedge to be constructed (can be null)
-        newHalfEdge = make_shared<InHalfedge>(InHalfedge{currVertex, nullptr, twin, edge, nullptr});
-        if (edge == nullptr) {
-            // edge does not exist: make one and connect it to the new halfEdge
-            edge = make_shared<InEdge>(InEdge{newHalfEdge});
-            newHalfEdge->edge = edge;
-        } else {
-            // link new half edge to its existing twin
-            twin->twin = newHalfEdge;
-        }
-        if (currVertex->halfedge == nullptr)
-            currVertex->halfedge = newHalfEdge; // set representative (don't touch existing representatives)
-    }
-
-
-    // set next pointers
-    v0->halfedge->next = v1->halfedge;
-    v1->halfedge->next = v2->halfedge;
-    v2->halfedge->next = v0->halfedge;
-
-    // make face
-    shared_ptr<InFace> newFace = make_shared<InFace>(InFace{newHalfEdge}); // pick arbitrary half edge representative
-    _faces.insert(newFace);
-
-    return newFace;
-}
-
-float SPmesh::distance(float l_12, float l_23, float l_31, const Vector3f p, const Vector3f q) {
-    Vector3f u = q - p;
-    float d = -(
-        pow(l_12, 2)*u[0]*u[1] +
-        pow(l_23, 2)*u[1]*u[2] +
-        pow(l_31, 2)*u[2]*u[0]
-    );
-    return sqrt(d);
-}
-
-// updates the signpost angles for every edge incident to the given vertex i.
-// specifically, updates both the angle phi_ij and phi_ji for every edge (i,j)
-void SPmesh::updateVertex(shared_ptr<InVertex> i) {
-//    // update incoming angles phi_ji
-//    shared_ptr<InHalfedge> currHalfEdge = i->halfedge;
-//    do {
-//        updateSignpost();
-//        currHalfEdge = currHalfEdge->twin->next;
-//    } while (currHalfEdge != i->halfedge);
-
-//    auto [exTriangle, barycentricCoords] = traceFromVertex();
-}
-
-// inserts a new intrinsic vertex in the given intrinsic face ijk at the position specified using barycentric coords
-// barycentric coords must be positive and sum to 1
-void SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f& barycentricCoords) {
-    // get face's verts (ccw orientation)
-    std::shared_ptr<InVertex> v_i = face->halfedge->v;
-    std::shared_ptr<InVertex> v_j = face->halfedge->next->v;
-    std::shared_ptr<InVertex> v_k = face->halfedge->next->next->v;
-    // get face's edge lengths
-    float l_ij = v_i->halfedge->edge->length;
-    float l_jk = v_j->halfedge->edge->length;
-    float l_ki = v_k->halfedge->edge->length;
-
-    // make new vertex
-    std::shared_ptr<InVertex> p = make_shared<InVertex>();
-    p->exVertex = nullptr; // new intrinsic vertices do not correspond to any extrinsic vertex
-    p->barycentricPos = barycentricCoords;
-    _verts.insert(p);
-
-    // update signpost mesh connectivity
-    /// 1) remove the existing intrinsic face (and its half-edges, but not its verts)
-    eraseTriangle(face);
-    /// 2) insert 3 new intrinsic faces around p and update half edge connectivity (will update signpost afterwards)
-    std::shared_ptr<InFace> tri_ijp = insertTriangle(v_i, v_j, p);
-    insertTriangle(v_j, v_k, p);
-    insertTriangle(v_k, v_i, p);
-    validate();
-
-    // compute and set edge lengths of all new edges incident to new vertex p
-    // barycentric coordinates of vertices are: vi = (1,0,0),   vj = (0,1,0),   vk = (0,0,1).
-    std::shared_ptr<InEdge> e_ip = p->halfedge->edge;
-    e_ip->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(1,0,0)); // distance along intrinsic (flattened) triangle from vi to p
-    std::shared_ptr<InEdge> e_jp = p->halfedge->edge;
-    e_jp->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(0,1,0)); // vj to p
-    std::shared_ptr<InEdge> e_kp = p->halfedge->edge;
-    e_kp->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(0,0,1)); // vk to p
-
-
-    // update signpost angles
-//    updateVertex();
-}
-
 void SPmesh::loadHalfEdges() {
     cout << "vertices " << _vertices.size() << endl;
     unordered_map<int, shared_ptr<InVertex>> inVerts;
@@ -382,6 +176,301 @@ void SPmesh::loadHalfEdges() {
     cout << "validated" << endl;
 }
 
+
+// algo 4
+void SPmesh::initSignpost() {
+    for (shared_ptr<InEdge> e : _edges) {
+        // get vertex positions of endpoints
+        shared_ptr<InVertex> v0 = e->halfedge->v;
+        shared_ptr<InVertex> v1 = e->halfedge->twin->v;
+        e->length = (getVPos(v1) - getVPos(v0)).norm();
+    }
+    
+    for (shared_ptr<InVertex> v: _verts) {
+        float bigTheta_i = 0.f;
+        shared_ptr<InHalfedge> curr = v->halfedge->next->next->twin;
+        Vector3f rightEdge = getVPos(v->halfedge->twin->v) - getVPos(v);
+        do {
+            Vector3f leftEdge = getVPos(curr->twin->v) - getVPos(curr->v);
+            float angle = getAngle(rightEdge, leftEdge);
+            bigTheta_i += angle;
+            rightEdge = leftEdge;
+            curr = curr->next->next->twin;
+        } while (curr != v->halfedge->next->next->twin);
+        v->bigTheta = bigTheta_i;
+
+        float phi_ij0 = 0.f;
+        curr = v->halfedge;
+        curr->angle = 0.f;
+        while (curr->next->next->twin != v->halfedge) {
+            updateSignpost(curr);
+            curr = curr->next->next->twin;
+        } 
+    }
+
+    cout << "initialized signpost values" << endl;
+}
+
+
+// algo 1: updates the signpost angle of halfedge ik in triangle ijk
+// ij must already have a valid angle (bc angle of ik depends on angle of ij). Edge lengths of ijk must also be valid
+void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
+    // given the 'right' halfedge ij of the face originiating from vertex i, get the left halfedge ik
+    shared_ptr<InHalfedge> h_ik = h_ij->next->next->twin;
+    // get edge lengths of triangle
+    float l_ij = h_ij->edge->length;
+    float l_jk = h_ij->next->edge->length;
+    float l_ki = h_ij->next->next->edge->length;
+    // update angle (phi) of halfedge ik
+    float theta_i_jk = getAngleFromEdgeLengths(l_ij, l_jk, l_ki); // euclidean angle of opposite edge ik relative to ij (i.e. interior angle at vertex i between ij and ik)
+    h_ik->angle = h_ij->angle +  (2*M_PI * theta_i_jk)/h_ij->v->bigTheta;
+}
+
+// algo 2: see note in header file
+std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> SPmesh::traceFromVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
+    return make_tuple(nullptr, Vector3f(0,0,0), 0);
+}
+
+// algo 3: updates the signpost angles for every edge incident to the given vertex vi.
+// specifically, updates both the angle phi_ij and phi_ji for every edge (i,j)
+void SPmesh::updateVertex(shared_ptr<InVertex> v_i) {
+    cout << "updating vertex..." << endl;
+    /// update incoming angles phi_ji (of halfedges that point to vi)
+    shared_ptr<InHalfedge> currHalfEdge = v_i->halfedge;
+    do {
+        // update h_ji
+        updateSignpost(currHalfEdge->next);
+        currHalfEdge = currHalfEdge->twin->next;
+    } while (currHalfEdge != v_i->halfedge);
+
+
+    /// update outgoing angles phi_ij with respect to the fixed reference direction of the extrinsic triangle (set during initialization)
+    // 1) update angle of canonical halfedge (h_ij0) by measuring the angle between the extrinsic face's reference direction and e_ij0
+    shared_ptr<InHalfedge> h_ij0 = v_i->halfedge;
+    shared_ptr<InHalfedge> h_j0i = h_ij0->twin;
+    // get extrinsic face containing i by tracing from j0 to i along EXTRINSIC mesh
+    auto [exTriangle, barycentricCoords, uTransformed] = traceFromVertex(
+                h_j0i->v,
+                h_j0i->edge->length,
+                h_j0i->angle); // <- u vector in section 3.2.3 in the local coordinate system at v_j0
+    // get -u in coordinate system of the extrinsic triangle (180 rotation of u from the trace query)
+    float e_ij0_dir = (uTransformed < M_PI) ? (uTransformed + M_PI) : (uTransformed - M_PI); // in [0, 2*pi)
+    h_ij0->angle = e_ij0_dir;
+    // set barycentric coords of vi in the extrinsic triangle
+    v_i->barycentricPos = barycentricCoords;
+
+    // 2) update remaining outgoing angles phi_ij in ccw order
+    currHalfEdge = v_i->halfedge;
+    while (currHalfEdge->next->next->twin != v_i->halfedge) {
+        updateSignpost(currHalfEdge);
+        currHalfEdge = currHalfEdge->next->next->twin;
+    }
+}
+
+// algo 6: returns the distance between points p and q inside a triangle with the three given edge lengths.
+// p and q are barycentric coords.
+float SPmesh::distance(float l_12, float l_23, float l_31, const Vector3f p, const Vector3f q) {
+    Vector3f u = q - p;
+    float d = -(
+        pow(l_12, 2)*u[0]*u[1] +
+        pow(l_23, 2)*u[1]*u[2] +
+        pow(l_31, 2)*u[2]*u[0]
+    );
+    return sqrt(d);
+}
+
+// algo 7: inserts a new intrinsic vertex in the given intrinsic face ijk at the position specified using barycentric coords
+// barycentric coords must be positive and sum to 1
+void SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f& barycentricCoords) {
+    cout << "inserting vertex..." << endl;
+    // get face's verts (ccw orientation)
+    std::shared_ptr<InVertex> v_i = face->halfedge->v;
+    std::shared_ptr<InVertex> v_j = face->halfedge->next->v;
+    std::shared_ptr<InVertex> v_k = face->halfedge->next->next->v;
+    // get face's edge lengths
+    float l_ij = v_i->halfedge->edge->length;
+    float l_jk = v_j->halfedge->edge->length;
+    float l_ki = v_k->halfedge->edge->length;
+
+    // make new vertex
+    std::shared_ptr<InVertex> p = make_shared<InVertex>();
+    p->exVertex = nullptr; // new intrinsic vertices do not correspond to any extrinsic vertex
+    p->barycentricPos = barycentricCoords;
+    _verts.insert(p);
+
+    // update signpost mesh connectivity
+    /// 1) remove the existing intrinsic face (and its half-edges, but not its verts)
+    eraseTriangle(face);
+    /// 2) insert 3 new intrinsic faces around p and update half edge connectivity (will update signposts afterwards)
+    insertTriangle(v_i, v_j, p);
+    insertTriangle(v_j, v_k, p);
+    insertTriangle(v_k, v_i, p);
+    validate();
+
+    // compute and set edge lengths of all new edges incident to new vertex p
+    // barycentric coordinates of vertices are: vi = (1,0,0),   vj = (0,1,0),   vk = (0,0,1).
+    std::shared_ptr<InEdge> e_ip = p->halfedge->edge;
+    e_ip->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(1,0,0)); // distance along intrinsic (flattened) triangle from vi to p
+    std::shared_ptr<InEdge> e_jp = p->halfedge->edge;
+    e_jp->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(0,1,0)); // vj to p
+    std::shared_ptr<InEdge> e_kp = p->halfedge->edge;
+    e_kp->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(0,0,1)); // vk to p
+
+    // update signpost angles around p and affected neighbors
+    updateVertex(p);
+}
+
+
+
+//////////////////////////////////////////////
+//////////////// HELPERS /////////////////////
+//////////////////////////////////////////////
+
+// HELPER :get the extrinsic position of an ORIGINAL intrinsic vertex
+Vector3f SPmesh::getVPos(shared_ptr<InVertex> v) {
+    return v->exVertex->pos;
+}
+
+// HELPER: for a triangle with edge lengths l_ij, l_jk, l_ki, returns the interior angle at vertex i
+float SPmesh::getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki) {
+    // see fig. 9 of paper
+    return acos( (pow(l_ij, 2) + pow(l_ki, 2) - pow(l_jk, 2)) / (2*l_ij*l_ki) );
+}
+
+// HELPER: returns the angle between two 3-vectors in [0, pi]
+float SPmesh::getAngle(Vector3f u, Vector3f v) {
+    return acos(u.normalized().dot(v.normalized()));
+}
+
+// HELPER: returns the ccw angle FROM vector u TO vector v in the range [0, 2*pi). Imagine fixing u as the x-axis in R^2 and going ccw to find v.
+float SPmesh::argument(Vector2f u, Vector3f v) {
+    // adapted from  https://stackoverflow.com/questions/40286650/how-to-get-the-anti-clockwise-angle-between-two-2d-vectors
+    float angle = atan2(u[0]*v[1] - u[1]*v[0], u[0]*v[0] + u[1]*v[1]);
+    if (angle < 0) {
+        angle += 2*M_PI;
+    }
+    return angle;
+}
+
+// HELPER: removes the given intrinsic triangle.
+// Also removes any incident InEdges that would no longer border two faces after the current removal
+// Face's halfedges are preserved (unless the edge was removed, then the halfedges would also be removed)
+void SPmesh::eraseTriangle(shared_ptr<InFace> tri) {
+    shared_ptr<InHalfedge> startHalfEdge = tri->halfedge;
+    shared_ptr<InHalfedge> currHalfEdge = startHalfEdge;
+    do {
+        currHalfEdge->face = nullptr;
+        if (!currHalfEdge->twin->face) {
+            // remove curr InEdge entirely since it is no longer adjacent to any faces (e.g. if two adjacent faces are erased, shared edge is also erased on the 2nd call)
+            _edges.erase(currHalfEdge->edge);
+            _halfedges.erase(currHalfEdge);
+            _halfedges.erase(currHalfEdge->twin);
+        }
+
+        currHalfEdge = currHalfEdge->next;
+    } while(currHalfEdge != startHalfEdge);
+
+    _faces.erase(tri);
+}
+
+// HELPER: retrieves the halfedge belonging to the given edge with the matching source vertex, else nullptr
+shared_ptr<InHalfedge> SPmesh::getHalfEdgeWithSource(shared_ptr<InEdge> edge, shared_ptr<InVertex> sourceVertex) const {
+    assert(_edges.contains(edge));
+    assert(edge->halfedge);
+    shared_ptr<InHalfedge> he_0 = edge->halfedge;
+    shared_ptr<InHalfedge> he_1 = he_0 ? he_0->twin : nullptr;
+    return (he_0->v == sourceVertex) ? he_0 : he_1;
+}
+
+// HELPER: inserts an intrinsic triangle whose vertices are v0, v1, v2. Assumes v0,v1,v2 are provided in ccw order.
+// does not assume that there exist faces adjacent to the triangle (v0,v1,v2). Can be called in any order to insert multiple adjacent faces.
+shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<InVertex> v1, shared_ptr<InVertex> v2) {
+    // make empty face
+    shared_ptr<InFace> newFace = make_shared<InFace>(InFace{}); // pick arbitrary half edge representative
+    _faces.insert(newFace);
+    // construct new edges and their corresponding half-edges on this face if necessary. Link half edges of existing edges to their existing twins
+    shared_ptr<InHalfedge> newHalfEdge;
+    shared_ptr<InHalfedge> newFaceRepresentativeHalfEdge = nullptr;
+    auto vertices = vector{v0, v1, v2};
+    shared_ptr<InHalfedge> he_0;
+    shared_ptr<InHalfedge> he_1;
+    shared_ptr<InHalfedge> he_2;
+    for (int i = 0; i < 3; i++) {
+        shared_ptr<InVertex> currVertex = vertices[i];
+        shared_ptr<InEdge> edge = getEdge(vertices[i], vertices[(i+1) % 3]); // edge (i, i->next) containing halfedge to be constructed (can be null)
+        if (edge) {
+            // grab the halfedge contained in this edge whose source is at currVertex (if it exists)
+            shared_ptr<InHalfedge> existingHalfEdge = getHalfEdgeWithSource(edge, currVertex);
+            if (existingHalfEdge) {
+                existingHalfEdge->face = newFace;
+                newHalfEdge = existingHalfEdge; // use the existing halfedge as the 'new halfedge'
+            } else {
+                // edge and twin of the desired halfedge exist (but not the halfedge itself): make a new halfedge and glue to the existing twin (the single representative)
+                // initialize angle to -1 to indicate invalid
+                newHalfEdge = make_shared<InHalfedge>(InHalfedge{currVertex, nullptr, edge->halfedge, edge, nullptr, -1});
+                newHalfEdge->twin->twin = newHalfEdge;
+                newHalfEdge->edge = edge;
+                newHalfEdge->face = newFace;
+            }
+        } else {
+            newHalfEdge = make_shared<InHalfedge>(InHalfedge{currVertex, nullptr, nullptr, nullptr, nullptr, -1});
+            // edge does not exist: make one and connect it to the new halfEdge
+            edge = make_shared<InEdge>(InEdge{newHalfEdge, -1}); // initialize length to -1 to indicate invalid
+            newHalfEdge->edge = edge;
+            newHalfEdge->face = newFace;
+        }
+
+        // pick an arbitrary representative halfedge for the new face
+        if (!newFaceRepresentativeHalfEdge)
+            newFaceRepresentativeHalfEdge = newHalfEdge;
+
+        // record current half edge for setting next pointers later. Set he_i = current halfedge (whose base is at v_i)
+        switch(i) {
+            case 0: he_0 = newHalfEdge; break;
+            case 1: he_1 = newHalfEdge; break;
+            case 2: he_2 = newHalfEdge; break;
+        }
+
+/* old
+        newHalfEdge = make_shared<InHalfedge>(InHalfedge{currVertex, nullptr, twin, edge, nullptr, -1}); // initialize angle to -1 to indicate invalid
+        if (edge == nullptr) {
+            // edge does not exist: make one and connect it to the new halfEdge
+            edge = make_shared<InEdge>(InEdge{newHalfEdge, -1}); // initialize length to -1 to indicate invalid
+            newHalfEdge->edge = edge;
+        } else {
+            // link new half edge to its existing twin
+            twin->twin = newHalfEdge;
+        }
+        if (currVertex->halfedge == nullptr)
+            currVertex->halfedge = newHalfEdge; // set representative (don't touch existing representatives)
+          */
+    }
+
+
+    // set next pointers
+    he_0->next = he_1;
+    he_1->next = he_2;
+    he_2->next = he_0;
+
+    // set face representative
+    newFace->halfedge = newFaceRepresentativeHalfEdge;
+    return newFace;
+}
+
+// HELPER: returns the InEdge containing v0 and v1 as endpoints or nullptr if it doesn't exist
+shared_ptr<InEdge> SPmesh::getEdge(shared_ptr<InVertex> v0, shared_ptr<InVertex> v1) const {
+    // traverse 1-ring neighborhood of v0 and check incident vertices
+    shared_ptr<InHalfedge> currHalfEdge = v0->halfedge;
+    do {
+        // return current half edge if it belongs to edge (v0, v1)
+        if (currHalfEdge->next->v == v1)
+            return currHalfEdge->edge;
+        // advance clockwise
+        currHalfEdge = currHalfEdge->twin->next;
+    } while (currHalfEdge != v0->halfedge);
+    return nullptr;
+}
+
 //int SPmesh::getDegree(const shared_ptr<InVertex> &v) {
 //    int i = 1;
 //    shared_ptr<InHalfedge> curr = v->halfedge->twin->next;
@@ -400,11 +489,6 @@ void SPmesh::loadHalfEdges() {
 //    return normal;
 //}
 
-//float SPmesh::getArea(Vector3f &v1, Vector3f &v2, Vector3f &v3) {
-//    Vector3f AC = v3 - v1;
-//    Vector3f AB = v2 - v1;
-//    return AB.cross(AC).norm()/2.f;
-//}
 
 void SPmesh::checkCircular(const shared_ptr<InHalfedge> &halfedge) {
     assert(halfedge == halfedge->next->next->next);
@@ -445,6 +529,10 @@ void SPmesh::checkVertices() {
 
 void SPmesh::validate() {
     for (const shared_ptr<InHalfedge> &halfedge: _halfedges) {
+        assert(halfedge->angle >= 0);
+        assert(halfedge->angle < 2*M_PI);
+        //assert(halfedge->edge->length > 0); // TODO: this is failing
+
         checkCircular(halfedge);
         checkTwin(halfedge);
     }
