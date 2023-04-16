@@ -199,7 +199,7 @@ float SPmesh::distance(float l_12, float l_23, float l_31, const Vector3f p, con
 
 // updates the signpost angles for every edge incident to the given vertex i.
 // specifically, updates both the angle phi_ij and phi_ji for every edge (i,j)
-//void SPmesh::updateVertex(shared_ptr<InVertex> i) {
+void SPmesh::updateVertex(shared_ptr<InVertex> i) {
 //    // update incoming angles phi_ji
 //    shared_ptr<InHalfedge> currHalfEdge = i->halfedge;
 //    do {
@@ -208,7 +208,7 @@ float SPmesh::distance(float l_12, float l_23, float l_31, const Vector3f p, con
 //    } while (currHalfEdge != i->halfedge);
 
 //    auto [exTriangle, barycentricCoords] = traceFromVertex();
-//}
+}
 
 // inserts a new intrinsic vertex in the given intrinsic face ijk at the position specified using barycentric coords
 // barycentric coords must be positive and sum to 1
@@ -248,7 +248,7 @@ void SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f& barycentricCoo
 
 
     // update signpost angles
-    updateVertex();
+//    updateVertex();
 }
 
 void SPmesh::loadHalfEdges() {

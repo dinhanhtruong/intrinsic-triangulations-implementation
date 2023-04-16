@@ -74,6 +74,7 @@ private:
     void eraseTriangle(std::shared_ptr<InFace> tri);
     std::shared_ptr<InFace> insertTriangle(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1, std::shared_ptr<InVertex> v2);
     void insertVertex(std::shared_ptr<InFace> face, Eigen::Vector3f& barycentricCoords);
+    void updateVertex(std::shared_ptr<InVertex> i);
 
 
 
