@@ -69,6 +69,8 @@ private:
     // math/connectivity heleprs
     float getAngle(Eigen::Vector3f v1, Eigen::Vector3f v2);
     float getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki);
+    float baseLength(float a, float b, float theta);
+    float angleBetween(float a, float b);
     float argument(Eigen::Vector2f u, Eigen::Vector3f v);
     Eigen::Vector3f getVPos(std::shared_ptr<InVertex> v);
     std::shared_ptr<InEdge> getEdge(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1) const;
@@ -92,10 +94,11 @@ private:
     ///         the traced ray intersects an edge
     std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> traceFromVertex(std::shared_ptr<InVertex> v_i, float distance, float angle);
     void updateVertex(std::shared_ptr<InVertex> i);
+    void flipEdge(std::shared_ptr<InEdge> ij);
     float distance(float l_12, float l_23, float l_31, const Eigen::Vector3f p, const Eigen::Vector3f q);
     void insertVertex(std::shared_ptr<InFace> face, Eigen::Vector3f& barycentricCoords);
-
-
+    std::pair<float, float> vectorToPoint(float l_ij, float l_jk, float l_ki, const Eigen::Vector3f &i, const Eigen::Vector3f &j, const Eigen::Vector3f &p);
+    void moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab, const Eigen::Vector3f &p);
 
 
     std::vector<Eigen::Vector3f> _vertices;

@@ -267,6 +267,42 @@ void SPmesh::updateVertex(shared_ptr<InVertex> v_i) {
     }
 }
 
+// algo 5: takes an edge ij with opposite vertices k,l and flips it to be kl
+// replaces triangles ijk, jil with klj,lki
+void SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
+    std::shared_ptr<InHalfedge> lj = ij->halfedge->twin->next->next;
+    std::shared_ptr<InHalfedge> ki = ij->halfedge->next->next;
+    float l_ij = ij->length;
+    float l_jk = ij->halfedge->next->edge->length;
+    float l_ki = ki->edge->length;
+    float l_il = ij->halfedge->twin->next->edge->length;
+    float l_lj = lj->edge->length;
+
+    float theta = getAngleFromEdgeLengths(l_ij, l_jk, l_ki) + getAngleFromEdgeLengths(l_il, l_lj, l_ij);
+
+    std::shared_ptr<InVertex> vi = ij->halfedge->v;
+    std::shared_ptr<InVertex> vj = ij->halfedge->next->v;
+    std::shared_ptr<InVertex> vk = ki->v;
+    std::shared_ptr<InVertex> vl = lj->v;
+
+    // update signpost mesh connectivity
+    /// 1) remove the existing 2 intrinsic faces adjacent to edge
+    eraseTriangle(ij->halfedge->face);
+    eraseTriangle(ij->halfedge->twin->face);
+    /// 2) insert 2 new intrinsic faces adjacent to flipped edge
+    insertTriangle(vi, vl, vk);
+    insertTriangle(vj, vk, vl);
+
+    // get new length of flipped edge
+    float l_kl = baseLength(l_ki, l_il, theta);
+
+    // update signposts
+    /// update angle of HE lk using lj
+    updateSignpost(lj);
+    /// update angle of HE kl using ki
+    updateSignpost(ki);
+}
+
 // algo 6: returns the distance between points p and q inside a triangle with the three given edge lengths.
 // p and q are barycentric coords.
 float SPmesh::distance(float l_12, float l_23, float l_31, const Vector3f p, const Vector3f q) {
@@ -320,6 +356,50 @@ void SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f& barycentricCoo
     updateVertex(p);
 }
 
+// algo 9: given barycentric coords p for a point in triangle ijk returns polar coords r,phi of the vector from i to p
+// phi is relative to edge ij
+std::pair<float, float> SPmesh::vectorToPoint(float l_ij, float l_jk, float l_ki, const Eigen::Vector3f &i, const Eigen::Vector3f &j, const Eigen::Vector3f &p) {
+    float r_pi = distance(l_ij, l_jk, l_ki, i, p); // distance from p to i
+    float r_jp = distance(l_ij, l_jk, l_ki, j, p); // distance from j to p
+    float phi_ip = getAngleFromEdgeLengths(l_ij, r_jp, r_pi); // angle from ij to ip
+    return std::make_pair(r_pi, phi_ip);
+}
+
+// algo 10: moves inserted vertex i to p given by nonnegative barycentric coords inside triangle iab
+void SPmesh::moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab, const Eigen::Vector3f &p) {
+    // need to get vertex a but don't know what iab points to
+    // loop until we get the HE starting at i (which is HE ia)
+    std::shared_ptr<InHalfedge> ia = iab->halfedge;
+    while (ia->v != i) {
+        ia = ia->next;
+    }
+    std::shared_ptr<InVertex> a = ia->next->v;
+
+    float l_ia = ia->edge->length;
+    float l_ab = ia->next->edge->length;
+    float l_bi = ia->next->next->edge->length;
+
+    std::pair<float, float> rPhi = vectorToPoint(l_ia, l_ab, l_bi, i->barycentricPos, a->barycentricPos, p); // vector from i to p
+    float r = rPhi.first;
+    float phi = rPhi.second; // angle of ip relative to ia
+    // since i is inserted, all adjacent faces are coplanar and bigTheta_i=2*pi which means:
+    // angle refHE->ip = angle ia->ip + angle refHE->ia
+    phi = phi + ia->angle;
+
+    // update lengths for adjacent neighbors
+    std::shared_ptr<InHalfedge> ij = i->halfedge;
+    do {
+        float alpha = angleBetween(phi, ij->angle);
+        float l_ij = ij->edge->length;
+        /// note from Mehek: this looks like what baseLength does but for some reason they don't use it?
+        float l_pj = sqrt(r * r + l_ij * l_ij - 2 * r * l_ij * cos(alpha)); // length from j to p (new pos for i)
+        ij->edge->length = l_pj;
+        ij = ij->next->next->twin;
+    } while (ij != i->halfedge);
+
+    // update signpost angles for adjacent halfedges
+    updateVertex(i);
+}
 
 
 //////////////////////////////////////////////
@@ -335,6 +415,20 @@ Vector3f SPmesh::getVPos(shared_ptr<InVertex> v) {
 float SPmesh::getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki) {
     // see fig. 9 of paper
     return acos( (pow(l_ij, 2) + pow(l_ki, 2) - pow(l_jk, 2)) / (2*l_ij*l_ki) );
+}
+
+// HELPER: returns the third side length of a triangle with side lengths a,b meeting at angle theta (law of cos)
+float SPmesh::baseLength(float a, float b, float theta) {
+    return sqrt(a * a + b * b + 2 * a * b * cos(theta));
+}
+
+/// note from Mehek: need to clarify what this is supposed to do. I implemented it based on the way it was described
+/// but I don't think that matches what 3.3.3 is using it for
+// HELPER: returns smallest unsigned angle between the points on the unit circle given by angles a,b
+float SPmesh::angleBetween(float a, float b) {
+    float diff = abs(a - b); // get positive diff
+    if (diff > M_PI) diff = 2.f * M_PI - diff; // smaller angle should be in [0, pi]
+    return diff;
 }
 
 // HELPER: returns the angle between two 3-vectors in [0, pi]
