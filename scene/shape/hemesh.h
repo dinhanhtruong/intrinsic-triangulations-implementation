@@ -51,6 +51,7 @@ public:
     std::shared_ptr<ExHalfedge> makeHalfedge(std::shared_ptr<ExVertex> v, std::shared_ptr<ExHalfedge> next, std::shared_ptr<ExHalfedge> twin, std::shared_ptr<ExEdge> edge, std::shared_ptr<ExFace> face);
     std::shared_ptr<ExEdge> makeEdge(std::shared_ptr<ExHalfedge> halfedge);
     std::shared_ptr<ExFace> makeFace(std::shared_ptr<ExHalfedge> halfedge);
+    void assignColors();
 
 private:
     void checkCircular(const std::shared_ptr<ExHalfedge> &halfedge);
@@ -65,4 +66,6 @@ private:
     std::unordered_set<std::shared_ptr<ExEdge>> _edges;
     std::unordered_set<std::shared_ptr<ExHalfedge>> _halfedges;
     std::unordered_set<std::shared_ptr<ExFace>> _faces;
+
+    std::unordered_map<std::shared_ptr<ExFace>, int> _faceColors;
 };

@@ -135,6 +135,7 @@ void Scene::addPrimitive(CS123ScenePrimitive *prim, const Affine3f &transform, s
     switch(prim->type) {
     case PrimitiveType::PRIMITIVE_MESH:
         std::cout << "Loading mesh " << prim->meshfile << std::endl;
+        // TODO: store SP meshes as well as path meshes
         objects->push_back(loadMesh(prim->meshfile, transform, baseDir));
         std::cout << "Done loading mesh" << std::endl;
         break;
@@ -173,7 +174,12 @@ Mesh *Scene::loadMesh(std::string filePath, const Affine3f &transform, const std
     std::vector<Vector3i> heFaces;
     std::vector<Vector3f> heVerts;
 
-    //TODO populate vectors and use tranform
+    /// TODO: idea for visualization
+    /// each triangle has a stored index (private rn but we can make it public)
+    /// triangles are initialized exactly in the order that they are passed in faces list
+    /// instead of unordered_set use vector for faces in HEmesh (doesn't matter since not removing any faces
+    /// from extrinsic mesh) so that index of Triangle can be used to index into HE faces and get corresponding
+    /// HE mesh face from intersection data
     for(size_t s = 0; s < shapes.size(); s++) {
         size_t index_offset = 0;
         for(size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {

@@ -115,3 +115,34 @@ void HEmesh::validate() {
     checkFaces();
     checkVertices();
 }
+
+void HEmesh::assignColors() {
+    // adapted from https://www.geeksforgeeks.org/graph-coloring-set-2-greedy-algorithm/#
+    _faceColors.reserve(_faces.size());
+    int colorsUsed[4] = {false, false, false, false};
+
+    auto face = _faces.begin();
+    _faceColors[*face] = 0; // assign first color
+
+    for (face = _faces.begin()++; face != _faces.end(); face++) {
+        // flag colors already used by adjacent faces
+        std::shared_ptr<ExFace> adj1 = (*face)->halfedge->twin->face;
+        std::shared_ptr<ExFace> adj2 = (*face)->halfedge->next->twin->face;
+        std::shared_ptr<ExFace> adj3 = (*face)->halfedge->next->next->twin->face;
+        if (_faceColors.contains(adj1)) colorsUsed[_faceColors[adj1]] = true;
+        if (_faceColors.contains(adj2)) colorsUsed[_faceColors[adj2]] = true;
+        if (_faceColors.contains(adj3)) colorsUsed[_faceColors[adj3]] = true;
+
+        // find lowest unused color
+        int firstAvailableColor;
+        for (firstAvailableColor = 0; firstAvailableColor < 4; firstAvailableColor++) {
+            if (!colorsUsed[firstAvailableColor]) break;
+        }
+
+        // assign color to face
+        _faceColors[*face] = firstAvailableColor;
+
+        // reset color flags
+        for (int i = 0; i < 4; i++) colorsUsed[i] = false;
+    }
+}
