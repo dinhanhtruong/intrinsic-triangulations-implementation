@@ -5,22 +5,28 @@
 
 #include "scene/scene.h"
 
+const Eigen::Vector3f colors[4] = {
+    Eigen::Vector3f(0.970, 0.611, 0.611),
+    Eigen::Vector3f(0.611, 0.898, 0.970),
+    Eigen::Vector3f(0.970, 0.928, 0.611),
+    Eigen::Vector3f(0.611, 0.970, 0.731)
+};
 
 class PathTracer
 {
 public:
     PathTracer(int width, int height);
 
-    void traceScene(QRgb *imageData, const Scene &scene);
+    void traceScene(QRgb *imageData, Scene &scene);
 
 private:
     int m_width, m_height;
 
     void toneMap(QRgb *imageData, std::vector<Eigen::Vector3f> &intensityValues);
 
-    Eigen::Vector3f tracePixel(int x, int y, const Scene& scene, const Eigen::Matrix4f &invViewMatrix, int currentSampleIdx, int numSamples);
+    Eigen::Vector3f tracePixel(int x, int y, Scene& scene, const Eigen::Matrix4f &invViewMatrix, int currentSampleIdx, int numSamples);
 
-    Eigen::Vector3f traceRay(const Ray& r, const Scene &scene, bool countEmitted);
+    Eigen::Vector3f traceRay(const Ray& r, Scene &scene, bool countEmitted);
 
     Ray sampleRandomRayThruPixel(Eigen::Vector3f camOrigin, int imgRow, int imgCol);
     Ray stratifiedSubpixelSampling(Eigen::Vector3f camOrigin, int imgRow, int imgCol, int numCellsPerSide, int pixelCellIdx);

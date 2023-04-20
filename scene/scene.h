@@ -10,6 +10,7 @@
 #include "util/CS123SceneData.h"
 
 #include "shape/mesh.h"
+#include "shape/spmesh.h"
 
 
 #include <memory>
@@ -38,10 +39,15 @@ public:
     // returns all triangles in the scene whose material has non-zero emission
     const std::vector<Triangle*>& getEmissives() const { return m_emissives; };
 
+    SPmesh* getSPMesh() { return (*_spMeshes)[0]; }
+
 private:
 
     BVH *m_bvh;
     std::vector<Object *> *_objects;
+
+//    SPmesh* m_spMesh;
+    std::vector<SPmesh *>* _spMeshes;
 
     BasicCamera m_camera;
 
@@ -51,9 +57,9 @@ private:
     std::vector<CS123SceneLightData> m_lights;
 
     static bool parseTree(CS123SceneNode *root, Scene *scene, const std::string& baseDir);
-    static void parseNode(CS123SceneNode *node, const Eigen::Affine3f &parentTransform, std::vector<Object *> *objects, const std::string& baseDir);
-    static void addPrimitive(CS123ScenePrimitive *prim, const Eigen::Affine3f &transform, std::vector<Object *> *objects, const std::string& baseDir);
-    static Mesh *loadMesh(std::string filePath, const Eigen::Affine3f &transform, const std::string& baseDir);
+    static void parseNode(CS123SceneNode *node, const Eigen::Affine3f &parentTransform, std::vector<Object *> *objects, std::vector<SPmesh *>* _spMeshes, const std::string& baseDir);
+    static void addPrimitive(CS123ScenePrimitive *prim, const Eigen::Affine3f &transform, std::vector<Object *> *objects, std::vector<SPmesh *>* _spMeshes, const std::string& baseDir);
+    static std::pair<Mesh*, SPmesh*> loadMesh(std::string filePath, const Eigen::Affine3f &transform, const std::string &baseDir);
 };
 
 #endif // SCENE_H

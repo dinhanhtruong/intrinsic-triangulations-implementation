@@ -1,7 +1,6 @@
 #include "scene.h"
 
 #include "shape/Sphere.h"
-#include "shape/spmesh.h"
 
 #include <util/CS123XmlSceneParser.h>
 
@@ -30,6 +29,12 @@ Scene::~Scene()
     }
     delete _objects;
     delete m_bvh;
+
+    for(unsigned int i = 0; i < _spMeshes->size(); ++i) {
+        SPmesh* o = (*_spMeshes)[i];
+        delete o;
+    }
+    delete _spMeshes;
 }
 
 bool Scene::load(QString filename, Scene **scenePointer)
@@ -76,9 +81,10 @@ void Scene::setBVH(const BVH &bvh)
 
 bool Scene::parseTree(CS123SceneNode *root, Scene *scene, const std::string &baseDir)
 {
-    std::vector<Object *> *objects = new std::vector<Object *>;
-    parseNode(root, Affine3f::Identity(), objects, baseDir);
-    if(objects->size() == 0) {
+    std::vector<Object*>* objects = new std::vector<Object*>;
+    std::vector<SPmesh*>* spMeshes = new std::vector<SPmesh*>;
+    parseNode(root, Affine3f::Identity(), objects, spMeshes, baseDir);
+    if(objects->size() == 0 || spMeshes->size() == 0) {
         return false;
     }
 
@@ -99,11 +105,12 @@ bool Scene::parseTree(CS123SceneNode *root, Scene *scene, const std::string &bas
     BVH *bvh = new BVH(objects);
 
     scene->_objects = objects;
+    scene->_spMeshes = spMeshes;
     scene->setBVH(*bvh);
     return true;
 }
 
-void Scene::parseNode(CS123SceneNode *node, const Affine3f &parentTransform, std::vector<Object *> *objects, const std::string &baseDir)
+void Scene::parseNode(CS123SceneNode *node, const Affine3f &parentTransform, std::vector<Object *> *objects, std::vector<SPmesh *>* spMeshes, const std::string &baseDir)
 {
     Affine3f transform = parentTransform;
     for(CS123SceneTransformation *trans : node->transformations) {
@@ -123,29 +130,32 @@ void Scene::parseNode(CS123SceneNode *node, const Affine3f &parentTransform, std
         }
     }
     for(CS123ScenePrimitive *prim : node->primitives) {
-        addPrimitive(prim, transform, objects, baseDir);
+        addPrimitive(prim, transform, objects, spMeshes, baseDir);
     }
     for(CS123SceneNode *child : node->children) {
-        parseNode(child, transform, objects, baseDir);
+        parseNode(child, transform, objects, spMeshes, baseDir);
     }
 }
 
-void Scene::addPrimitive(CS123ScenePrimitive *prim, const Affine3f &transform, std::vector<Object *> *objects, const std::string &baseDir)
+void Scene::addPrimitive(CS123ScenePrimitive *prim, const Affine3f &transform, std::vector<Object *> *objects, std::vector<SPmesh *>* spMeshes, const std::string &baseDir)
 {
     switch(prim->type) {
     case PrimitiveType::PRIMITIVE_MESH:
+    {
         std::cout << "Loading mesh " << prim->meshfile << std::endl;
-        // TODO: store SP meshes as well as path meshes
-        objects->push_back(loadMesh(prim->meshfile, transform, baseDir));
+        std::pair<Mesh*, SPmesh*> meshes = loadMesh(prim->meshfile, transform, baseDir);
+        objects->push_back(meshes.first);
+        spMeshes->push_back(meshes.second);
         std::cout << "Done loading mesh" << std::endl;
         break;
+    }
     default:
         std::cerr << "We don't handle any other formats yet" << std::endl;
         break;
     }
 }
 
-Mesh *Scene::loadMesh(std::string filePath, const Affine3f &transform, const std::string &baseDir)
+std::pair<Mesh*, SPmesh*> Scene::loadMesh(std::string filePath, const Affine3f &transform, const std::string &baseDir)
 {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
@@ -161,7 +171,7 @@ Mesh *Scene::loadMesh(std::string filePath, const Affine3f &transform, const std
 
     if(!ret) {
         std::cerr << "Failed to load/parse .obj file" << std::endl;
-        return nullptr;
+        return std::make_pair(nullptr, nullptr);
     }
 
     std::vector<Vector3f> vertices;
@@ -240,7 +250,7 @@ Mesh *Scene::loadMesh(std::string filePath, const Affine3f &transform, const std
     }
 
     for (size_t i = 0; i < attrib.vertices.size(); i += 3) {
-        heVerts.emplace_back(attrib.vertices[i], attrib.vertices[i + 1], attrib.vertices[i + 2]);
+        heVerts.push_back(transform * Vector3f(attrib.vertices[i], attrib.vertices[i + 1], attrib.vertices[i + 2]));
     }
 
     std::cout << "Loaded " << faces.size() << " faces" << std::endl;
@@ -255,11 +265,11 @@ Mesh *Scene::loadMesh(std::string filePath, const Affine3f &transform, const std
             materials);
     m->setTransform(transform);
 
-    SPmesh mesh;
+    SPmesh* spMesh = new SPmesh;
 //    mesh.loadFromFile(filePath);
-    mesh.initFromVectors(heVerts, heFaces);
+    spMesh->initFromVectors(heVerts, heFaces);
 
-    return m;
+    return std::make_pair(m, spMesh);
 }
 
 const BVH &Scene::getBVH() const

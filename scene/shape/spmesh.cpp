@@ -633,3 +633,70 @@ void SPmesh::validate() {
     checkFaces();
     checkVertices();
 }
+
+void SPmesh::assignColors() {
+    // adapted from https://www.geeksforgeeks.org/graph-coloring-set-2-greedy-algorithm/#
+    _faceColors.reserve(_faces.size());
+    int colorsUsed[4] = {false, false, false, false};
+
+    auto face = _faces.begin();
+    _faceColors[*face] = 0; // assign first color
+
+    for (face = _faces.begin()++; face != _faces.end(); face++) {
+        // flag colors already used by adjacent faces
+        std::shared_ptr<InFace> adj1 = (*face)->halfedge->twin->face;
+        std::shared_ptr<InFace> adj2 = (*face)->halfedge->next->twin->face;
+        std::shared_ptr<InFace> adj3 = (*face)->halfedge->next->next->twin->face;
+        if (_faceColors.contains(adj1)) colorsUsed[_faceColors[adj1]] = true;
+        if (_faceColors.contains(adj2)) colorsUsed[_faceColors[adj2]] = true;
+        if (_faceColors.contains(adj3)) colorsUsed[_faceColors[adj3]] = true;
+
+        // find lowest unused color
+        int firstAvailableColor;
+        for (firstAvailableColor = 0; firstAvailableColor < 4; firstAvailableColor++) {
+            if (!colorsUsed[firstAvailableColor]) break;
+        }
+
+        // assign color to face
+        _faceColors[*face] = firstAvailableColor;
+
+        // reset color flags
+        for (int i = 0; i < 4; i++) colorsUsed[i] = false;
+    }
+}
+
+Eigen::Vector3f SPmesh::getBaryCoords(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3) {
+    // courtesy of https://gamedev.stackexchange.com/questions/23743/whats-the-most-efficient-way-to-find-barycentric-coordinates
+    // NOTE that this doesn't take into account our assignment of barycentric coords for intrinsic vertices
+    // just doing it arbitrarily for the purposes of thresholding to get outlines
+    Vector3f a = v2 - v1;
+    Vector3f b = v3 - v1;
+    Vector3f c = p - v1;
+    float d00 = a.dot(a);
+    float d01 = a.dot(b);
+    float d11 = b.dot(b);
+    float d20 = c.dot(a);
+    float d21 = c.dot(b);
+    float denom = d00 * d11 - d01 * d01;
+    float v = (d11 * d20 - d01 * d21) / denom;
+    float w = (d00 * d21 - d01 * d20) / denom;
+    float u = 1.0f - v - w;
+    return Vector3f(u, v, w);
+}
+
+int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
+    shared_ptr<ExFace> exFace = _exMesh.getExTriangle(tri->getIndex());
+
+    // calculate barycentric coords on exFace
+    Vector3<Vector3f> vertices = tri->getVertices();
+    Vector3f p = getBaryCoords(point, vertices[0], vertices[1], vertices[2]);
+
+    // ignore color and draw outline for points close to exFace edges
+    if (p[0] < 0.05 || p[1] < 0.05 || p[2] < 0.05) {
+        return -1;
+    }
+
+    // TODO: call pointquery to get inFace and get inFace color
+
+    return 0;
+}

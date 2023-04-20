@@ -15,7 +15,8 @@ PathTracer::PathTracer(int width, int height)
 {
 }
 
-void PathTracer::traceScene(QRgb *imageData, const Scene& scene) {
+void PathTracer::traceScene(QRgb *imageData, Scene& scene) {
+    scene.getSPMesh()->assignColors();
     std::vector<Vector3f> intensityValues(m_width * m_height);
     Matrix4f invViewMat = (scene.getCamera().getScaleMatrix() * scene.getCamera().getViewMatrix()).inverse();  // scale???
     int numSamplesPerPixel = USE_STRATIFIED_SUBPIXEL_SAMPLING ? pow(floor(sqrt(NUM_SAMPLES_PER_PIXEL)), 2) // get closest smaller perfect square
@@ -82,7 +83,7 @@ Ray PathTracer::stratifiedSubpixelSampling(Vector3f camOrigin, int imgRow, int i
     return Ray(camOrigin, d.normalized());
 }
 
-Vector3f PathTracer::tracePixel(int x, int y, const Scene& scene, const Matrix4f &invViewMatrix, int currentSampleIdx, int numSamples) {
+Vector3f PathTracer::tracePixel(int x, int y, Scene& scene, const Matrix4f &invViewMatrix, int currentSampleIdx, int numSamples) {
     Vector3f origin(0, 0, 0);
     if (DEPTH_OF_FIELD > 0) {
         // scatter the eye location over a circular planar lens normal to look
@@ -110,100 +111,111 @@ Vector3f PathTracer::tracePixel(int x, int y, const Scene& scene, const Matrix4f
  * @param scene to be rendered
  * @return incoming radiance Li(r_o, r_d) toward the origin of the given ray r from its first intersection point
  */
-Vector3f PathTracer::traceRay(const Ray& r, const Scene& scene, bool countEmitted) {
+Vector3f PathTracer::traceRay(const Ray& r, Scene& scene, bool countEmitted) {
     IntersectionInfo insct;
     Ray rayOut(r);
 
     // find first intersection (if any) of ray w/ scene geometry
     if(scene.getIntersection(rayOut, &insct)) {
-        return Vector3f(1, 1, 1);
-
-        Vector3f radianceIn(0,0,0); // incoming radiance Li(r_o, r_d) toward the origin of the ray r from the intersection
-
         const Triangle *tri = static_cast<const Triangle *>(insct.data); // cast intersected obj to tri since handling tri meshes
+        SPmesh* spmesh = scene.getSPMesh();
+        int color = spmesh->getColor(tri, insct.hit);
+        if (color < 0) return Vector3f(0, 0, 0);
+
+        Vector3f diffuseColor = colors[color];
+        float kd = 0.5f;
+        float ka = 0.25f;
+
         Vector3f normal = tri->getNormal(insct.hit); // world space normal at insct point
-        Vector3f wi_intersection = -rayOut.d; // incident ray direction at the insct point. Points outward from insct.
+        Vector3f directionalLight(-1.f, -1.f, -1.f);
 
-        const tinyobj::material_t mat = tri->getMaterial(); // get the material of the intersected mesh tri
-        bool intersectionIsMirror = (tri->getMaterialType() == tinyobj::MaterialType::IDEAL_SPECULAR);
-        bool intersectionIsRefractive = (tri->getMaterialType() == tinyobj::MaterialType::DIELECTRIC_REFRACTION);
+        return ka * diffuseColor + kd * normal.dot(-directionalLight) * diffuseColor;
 
-        // if hit a light, accumulate emitted radiance from the light toward the ray origin
-        if (tri->getMaterialType() == tinyobj::MaterialType::LIGHT_SOURCE) {
-            if (countEmitted) {
-                radianceIn += tri->emittedRadiance(wi_intersection);
-                assert(radianceIn[0] > 0 && radianceIn[1] > 0 && radianceIn[2] > 0);
-            }
-            return radianceIn; // terminate path at light
-        }
-        if (!intersectionIsMirror && !intersectionIsRefractive){
-            // count direct lighting to the intersection
-            radianceIn += directLighting(insct, wi_intersection, scene);
-        }
+//        Vector3f radianceIn(0,0,0); // incoming radiance Li(r_o, r_d) toward the origin of the ray r from the intersection
 
-        // use single-sample MC estimate of the recursive integral term
-        Vector3f nextDir; // world space
-        float nextDirProb; // probability density of sampling the next ray direction
-        float cosTheta; // theta = angle between normal and w_i at insct. Only needed for indirect lighting.
-        if (intersectionIsMirror) {
-            nextDir = reflectAboutNormal(normal, wi_intersection);
-        } else if(intersectionIsRefractive) {
-            // assume normal from getIntersection always faces outward
-            bool enteringFromAir = (normal.dot(wi_intersection) > 0);
-            // re-orient the normal so that it is in the same hemisphere as in the same hemisphere as wi_intersection
-            normal = enteringFromAir ? normal : -normal;
-            // determine index of refraction of the
-            float iorIn;
-            float iorOut;
-            if (enteringFromAir) {
-                // assume air has ior=1
-                iorIn = 1;
-                iorOut = mat.ior;
-            } else {
-                iorIn = mat.ior;
-                iorOut = 1;
-            }
-            // get the refracted/transmitted ray (will be empty iff have total internal reflection)
-            std::optional<Vector3f> refractedRay = refract(normal, wi_intersection, iorIn, iorOut);
-            // special case: always reflect if have total internal reflection
-            if (!refractedRay.has_value()) {
-                nextDir = reflectAboutNormal(normal, wi_intersection);
-            } else {
-                // general case: use Schlick's approximation of the Fresnel term to determine the probability of reflection vs transmission/refraction.
-                //               & use Snell's law to get the refracted ray dir
-                float probReflect = schlickApprox(normal.dot(wi_intersection), iorIn, iorOut); // = prob(reflect)
-                nextDir = (generateRandFloat01() < probReflect) ? reflectAboutNormal(normal, wi_intersection)
-                                                                : refractedRay.value();
-            }
-        } else {
-            // general case: sample from hemisphere for indirect lighting
-            std::tie(nextDir, nextDirProb) = sampleDirection(normal, wi_intersection, tri->getMaterialType(), mat);
-            cosTheta = normal.dot(nextDir);
-        }
+//        Vector3f normal = tri->getNormal(insct.hit); // world space normal at insct point
+//        Vector3f wi_intersection = -rayOut.d; // incident ray direction at the insct point. Points outward from insct.
 
-        Vector3f f_r = tri->brdf(nextDir, wi_intersection, normal); // material-dependent BRDF at intersection point
-        float prob_rr = getContinuationProb(); // russian roulette
-        if (generateRandFloat01() < prob_rr){
-            // shoot recursive ray in the chosen dir
-            Ray nextRay(insct.hit, nextDir);
-            // compute incoming radiance integral. 2 cases: general indirect lighting & reflective/refractive surfaces
-            if (intersectionIsMirror || intersectionIsRefractive) {
-                // all incoming radiance is from the refracted/reflected direction: cos(theta) term cancels due to ideal BSDF.
-                // approximate prob density = 1 and dirac delta = 1.
-                radianceIn += Vector3f(
-                                f_r.array() * traceRay(nextRay, scene, true).array()
-                                /(prob_rr)
-                            );
-            } else {
-                // add radiance contribution of the sampled ray
-                // don't double count direct lighting (i.e. split integral) so that indirect + direct rays partition the hemisphere
-                radianceIn += Vector3f(
-                                f_r.array() * traceRay(nextRay, scene, false).array() * cosTheta
-                                /(nextDirProb * prob_rr)
-                            );
-            }
-        }
-        return radianceIn;
+//        const tinyobj::material_t mat = tri->getMaterial(); // get the material of the intersected mesh tri
+//        bool intersectionIsMirror = (tri->getMaterialType() == tinyobj::MaterialType::IDEAL_SPECULAR);
+//        bool intersectionIsRefractive = (tri->getMaterialType() == tinyobj::MaterialType::DIELECTRIC_REFRACTION);
+
+//        // if hit a light, accumulate emitted radiance from the light toward the ray origin
+//        if (tri->getMaterialType() == tinyobj::MaterialType::LIGHT_SOURCE) {
+//            if (countEmitted) {
+//                radianceIn += tri->emittedRadiance(wi_intersection);
+//                assert(radianceIn[0] > 0 && radianceIn[1] > 0 && radianceIn[2] > 0);
+//            }
+//            return radianceIn; // terminate path at light
+//        }
+//        if (!intersectionIsMirror && !intersectionIsRefractive){
+//            // count direct lighting to the intersection
+//            radianceIn += directLighting(insct, wi_intersection, scene);
+//        }
+
+//        // use single-sample MC estimate of the recursive integral term
+//        Vector3f nextDir; // world space
+//        float nextDirProb; // probability density of sampling the next ray direction
+//        float cosTheta; // theta = angle between normal and w_i at insct. Only needed for indirect lighting.
+//        if (intersectionIsMirror) {
+//            nextDir = reflectAboutNormal(normal, wi_intersection);
+//        } else if(intersectionIsRefractive) {
+//            // assume normal from getIntersection always faces outward
+//            bool enteringFromAir = (normal.dot(wi_intersection) > 0);
+//            // re-orient the normal so that it is in the same hemisphere as in the same hemisphere as wi_intersection
+//            normal = enteringFromAir ? normal : -normal;
+//            // determine index of refraction of the
+//            float iorIn;
+//            float iorOut;
+//            if (enteringFromAir) {
+//                // assume air has ior=1
+//                iorIn = 1;
+//                iorOut = mat.ior;
+//            } else {
+//                iorIn = mat.ior;
+//                iorOut = 1;
+//            }
+//            // get the refracted/transmitted ray (will be empty iff have total internal reflection)
+//            std::optional<Vector3f> refractedRay = refract(normal, wi_intersection, iorIn, iorOut);
+//            // special case: always reflect if have total internal reflection
+//            if (!refractedRay.has_value()) {
+//                nextDir = reflectAboutNormal(normal, wi_intersection);
+//            } else {
+//                // general case: use Schlick's approximation of the Fresnel term to determine the probability of reflection vs transmission/refraction.
+//                //               & use Snell's law to get the refracted ray dir
+//                float probReflect = schlickApprox(normal.dot(wi_intersection), iorIn, iorOut); // = prob(reflect)
+//                nextDir = (generateRandFloat01() < probReflect) ? reflectAboutNormal(normal, wi_intersection)
+//                                                                : refractedRay.value();
+//            }
+//        } else {
+//            // general case: sample from hemisphere for indirect lighting
+//            std::tie(nextDir, nextDirProb) = sampleDirection(normal, wi_intersection, tri->getMaterialType(), mat);
+//            cosTheta = normal.dot(nextDir);
+//        }
+
+//        Vector3f f_r = tri->brdf(nextDir, wi_intersection, normal); // material-dependent BRDF at intersection point
+//        float prob_rr = getContinuationProb(); // russian roulette
+//        if (generateRandFloat01() < prob_rr){
+//            // shoot recursive ray in the chosen dir
+//            Ray nextRay(insct.hit, nextDir);
+//            // compute incoming radiance integral. 2 cases: general indirect lighting & reflective/refractive surfaces
+//            if (intersectionIsMirror || intersectionIsRefractive) {
+//                // all incoming radiance is from the refracted/reflected direction: cos(theta) term cancels due to ideal BSDF.
+//                // approximate prob density = 1 and dirac delta = 1.
+//                radianceIn += Vector3f(
+//                                f_r.array() * traceRay(nextRay, scene, true).array()
+//                                /(prob_rr)
+//                            );
+//            } else {
+//                // add radiance contribution of the sampled ray
+//                // don't double count direct lighting (i.e. split integral) so that indirect + direct rays partition the hemisphere
+//                radianceIn += Vector3f(
+//                                f_r.array() * traceRay(nextRay, scene, false).array() * cosTheta
+//                                /(nextDirProb * prob_rr)
+//                            );
+//            }
+//        }
+//        return radianceIn;
     } else {
         return Vector3f(0, 0, 0);
     }

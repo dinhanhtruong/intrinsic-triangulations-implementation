@@ -26,9 +26,9 @@
 
 typedef float REAL;
 
-#define IMAGE_WIDTH 256
-#define IMAGE_HEIGHT 256
-#define NUM_SAMPLES_PER_PIXEL 30
+#define IMAGE_WIDTH 400
+#define IMAGE_HEIGHT 400
+#define NUM_SAMPLES_PER_PIXEL 5
 #define NUM_DIRECT_LIGHTING_SAMPLES 10 // the number of shadow rays cast from each non-mirror intersection point
 #define PATH_TERMINATION_PROB 0.2 // for Russian roulette random path termination
 

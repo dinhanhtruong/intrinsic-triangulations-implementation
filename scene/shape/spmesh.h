@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hemesh.h"
+#include "triangle.h"
 
 #include <vector>
 #include <unordered_set>
@@ -53,6 +54,9 @@ public:
     void initSignpost();
     void validate();
 
+    void assignColors();
+    int getColor(const Triangle* tri, Eigen::Vector3f point);
+
 private:
     /// validator helpers
     void checkCircular(const std::shared_ptr<InHalfedge> &halfedge);
@@ -72,6 +76,7 @@ private:
     float baseLength(float a, float b, float theta);
     float angleBetween(float a, float b);
     float argument(Eigen::Vector2f u, Eigen::Vector3f v);
+    Eigen::Vector3f getBaryCoords(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
     Eigen::Vector3f getVPos(std::shared_ptr<InVertex> v);
     std::shared_ptr<InEdge> getEdge(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1) const;
     std::shared_ptr<InHalfedge> getHalfEdgeWithSource(std::shared_ptr<InEdge> edge, std::shared_ptr<InVertex> sourceVertex) const;
@@ -114,4 +119,5 @@ private:
     std::unordered_set<std::shared_ptr<InFace>> _newFaces;
     std::unordered_set<std::shared_ptr<InEdge>> _newMiddleEdges;
     HEmesh _exMesh;
+    std::unordered_map<std::shared_ptr<InFace>, int> _faceColors;
 };
