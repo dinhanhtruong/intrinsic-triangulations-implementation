@@ -325,14 +325,20 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
     while (base->next->next->twin != v_i->inVertex->halfedge && base->next->next->twin->angle < angle) {
         base = base->next->next->twin;
     }
-    shared_ptr<InHalfedge> top = base->next->next;
     float a = (angle - base->angle) * v_i->inVertex->bigTheta/M_2_PI;
+    return traceVectorIntrinsic(base, Vector3f(0.f, 0.f, 1.f), distance, a);
+}
+
+
+// angle should be angle between trace phi and base phi
+std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsic(std::shared_ptr<InHalfedge> base, Eigen::Vector3f baryCoords, float distance, float angle) {
+    shared_ptr<InHalfedge> top = base->next->next;
     Vector2f fi = Vector2f(0.f, 0.f);
     Vector2f fj = Vector2f(0.f, base->edge->length);
-    float theta = top->twin->angle - base->angle * v_i->inVertex->bigTheta/M_2_PI;
+    float theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
     Vector2f fk = top->edge->length * Vector2f(cos(theta), sin(theta));
-    Vector3f bary = Vector3f(0.f, 0.f, 1.f);
-    Vector3f dir = Vector3f(base->edge->length, atan(a) * base->edge->length, 0.f);
+    Vector3f bary = baryCoords;
+    Vector3f dir = Vector3f(base->edge->length, atan(angle) * base->edge->length, 0.f);
     dir.normalize();
     Matrix3f A;
     A << fi(0), fj(0), fk(0),
@@ -380,7 +386,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
         top = base->next->next;
         Vector2f newfi = Vector2f(0.f, 0.f);
         Vector2f newfj = Vector2f(0.f, base->edge->length);
-        theta = top->twin->angle - base->angle * v_i->inVertex->bigTheta/M_2_PI;
+        theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
         Vector2f newfk = top->edge->length * Vector2f(cos(theta), sin(theta));
 
         Vector2f tijk = Vector2f(-edge(1), edge(0));
@@ -389,7 +395,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
 
         Vector2f newDir = -((dir2d.dot(edge) * -edge) + (dir2d.dot(tijk) * tnew));
         newDir.normalize();
-        Vector2f p = bary(0) * fi + bary(1) * fj + bary(2) * fk;
+        Vector2f p = edgeIntersectBary(0) * fi + edgeIntersectBary(1) * fj + edgeIntersectBary(2) * fk;
 
         fi = newfi;
         fj = newfj;

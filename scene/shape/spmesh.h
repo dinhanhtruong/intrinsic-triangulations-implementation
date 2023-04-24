@@ -94,6 +94,7 @@ private:
     ///         the traced ray intersects an edge
     std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> traceFromExtrinsicVertex(std::shared_ptr<ExVertex> v_i, float distance, float angle);
     std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle);
+    std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> traceVectorIntrinsic(std::shared_ptr<InHalfedge> base, Eigen::Vector3f baryCoords, float distance, float angle);
     void updateVertex(std::shared_ptr<InVertex> i);
     void flipEdge(std::shared_ptr<InEdge> ij);
     float distance(float l_12, float l_23, float l_31, const Eigen::Vector3f p, const Eigen::Vector3f q);
