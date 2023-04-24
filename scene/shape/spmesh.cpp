@@ -663,18 +663,18 @@ float SPmesh::argument(Vector2f u, Vector2f v) {
 
 // HELPER: removes the given intrinsic triangle.
 // Also removes any incident InEdges that would no longer border two faces after the current removal
-// Face's halfedges are preserved (unless the edge was removed, then the halfedges would also be removed)
+// All of the face's edges and their halfedges are preserved
 void SPmesh::eraseTriangle(shared_ptr<InFace> tri) {
     shared_ptr<InHalfedge> startHalfEdge = tri->halfedge;
     shared_ptr<InHalfedge> currHalfEdge = startHalfEdge;
     do {
         currHalfEdge->face = nullptr;
-        if (!currHalfEdge->twin->face) {
-            // remove curr InEdge entirely since it is no longer adjacent to any faces (e.g. if two adjacent faces are erased, shared edge is also erased on the 2nd call)
-            _edges.erase(currHalfEdge->edge);
-            _halfedges.erase(currHalfEdge);
-            _halfedges.erase(currHalfEdge->twin);
-        }
+//        if (!currHalfEdge->twin->face) {
+//            // remove curr InEdge entirely since it is no longer adjacent to any faces (e.g. if two adjacent faces are erased, shared edge is also erased on the 2nd call)
+//            _edges.erase(currHalfEdge->edge);
+//            _halfedges.erase(currHalfEdge);
+//            _halfedges.erase(currHalfEdge->twin);
+//        }
 
         currHalfEdge = currHalfEdge->next;
     } while(currHalfEdge != startHalfEdge);
@@ -691,7 +691,7 @@ shared_ptr<InHalfedge> SPmesh::getHalfEdgeWithSource(shared_ptr<InEdge> edge, sh
     return (he_0->v == sourceVertex) ? he_0 : he_1;
 }
 
-// HELPER: inserts an intrinsic triangle whose vertices are v0, v1, v2. Assumes v0,v1,v2 are provided in ccw order.
+// HELPER: inserts an intrinsic triangle whose vertices are v0, v1, v2. Assumes v0,v1,v2 are provided in ccw order. halfedge (v0, v1) will be assigned as the representative of the face
 // does not assume that there exist faces adjacent to the triangle (v0,v1,v2). Can be called in any order to insert multiple adjacent faces.
 shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<InVertex> v1, shared_ptr<InVertex> v2) {
     // make empty face
