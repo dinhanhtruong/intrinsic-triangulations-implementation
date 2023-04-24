@@ -226,7 +226,7 @@ void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
     h_ik->angle = h_ij->angle +  (2*M_PI * theta_i_jk)/h_ij->v->bigTheta;
 }
 
-std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
+std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
 //    shared_ptr<InHalfedge> base = v_i->halfedge;
 //    while (base->next->next->twin != v_i->halfedge && base->next->next->twin->angle < angle) {
 //        base = base->next->next->twin;
@@ -316,7 +316,7 @@ std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> SPmesh::traceFromInt
 //    }
 //
 //    Vector3f newPointBary = bary + t * baryDir;
-    return make_tuple(nullptr, Vector3f(0, 0, 1), 0);
+    return make_tuple(nullptr, Vector3f(0, 0, 1), Vector2f(0, 0));
 }
 
 // algo 2: see note in header file
@@ -456,11 +456,11 @@ void SPmesh::updateVertex(shared_ptr<InVertex> v_i) {
     auto [exTriangle, barycentricCoords, uTransformed] = traceFromIntrinsicVertex(
                 h_j0i->v,
                 h_j0i->edge->length,
-                h_j0i->angle); // <- u vector in section 3.2.3 in the local coordinate system at v_j0
-    // TODO update to use vec3f u with 0 final coordinate
-    // get -u in coordinate system of the extrinsic triangle (180 rotation of u from the trace query)
-    float e_ij0_dir = (uTransformed < M_PI) ? (uTransformed + M_PI) : (uTransformed - M_PI); // in [0, 2*pi)
-    h_ij0->angle = e_ij0_dir;
+                h_j0i->angle); // <- u vector in section 3.2.3 in the local polar coordinate system at v_j0
+
+    // NOTE: reference direction e_xyz of extrinsic face is along edge xy where x=(1,0,0) and y=(0,1,0) in barycentric coords
+    // In 2D local coords, it is the vector from (0,0) to (1,0)
+    h_ij0->angle = argument(Vector2f(1,0), -uTransformed);
     // set barycentric coords of vi in the extrinsic triangle
     v_i->barycentricPos = barycentricCoords;
 
@@ -647,10 +647,13 @@ float SPmesh::getAngle(Vector3f u, Vector3f v) {
     return acos(u.normalized().dot(v.normalized()));
 }
 
-// HELPER: returns the ccw angle FROM vector u TO vector v in the range [0, 2*pi). Imagine fixing u as the x-axis in R^2 and going ccw to find v.
-float SPmesh::argument(Vector2f u, Vector3f v) {
+// HELPER: returns the ccw angle FROM vector u TO vector v in the range [0, 2*pi).
+//Imagine fixing u as the x-axis in R^2 and going ccw to find v.
+float SPmesh::argument(Vector2f u, Vector2f v) {
+    Vector2f a = u.normalized();
+    Vector2f b = v.normalized();
     // adapted from  https://stackoverflow.com/questions/40286650/how-to-get-the-anti-clockwise-angle-between-two-2d-vectors
-    float angle = atan2(u[0]*v[1] - u[1]*v[0], u[0]*v[0] + u[1]*v[1]);
+    float angle = atan2(a[0]*b[1] - a[1]*b[0], a[0]*b[0] + a[1]*b[1]);
     if (angle < 0) {
         angle += 2*M_PI;
     }
