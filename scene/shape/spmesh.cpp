@@ -461,8 +461,9 @@ void SPmesh::updateVertex(shared_ptr<InVertex> v_i) {
     // NOTE: reference direction e_xyz of extrinsic face is along edge xy where x=(1,0,0) and y=(0,1,0) in barycentric coords
     // In 2D local coords, it is the vector from (0,0) to (1,0)
     h_ij0->angle = argument(Vector2f(1,0), -uTransformed);
-    // set barycentric coords of vi in the extrinsic triangle
+    // set barycentric coords of vi (located inside the extrinsic triangle)
     v_i->barycentricPos = barycentricCoords;
+    v_i->exFace = exTriangle;
 
     // 2) update remaining outgoing angles phi_ij in ccw order
     currHalfEdge = v_i->halfedge;
