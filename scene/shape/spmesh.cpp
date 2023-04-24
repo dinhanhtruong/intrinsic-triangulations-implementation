@@ -334,10 +334,10 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
     Vector3f bary = Vector3f(0.f, 0.f, 1.f);
     Vector3f dir = Vector3f(base->edge->length, atan(a) * base->edge->length, 0.f);
     dir.normalize();
-    Matrix3f A = Matrix3f(
-         fi(0), fj(0), fk(0),
+    Matrix3f A;
+    A << fi(0), fj(0), fk(0),
          fi(1), fj(1), fk(1),
-         1.f, 1.f, 1.f);
+         1.f, 1.f, 1.f;
     bool invertible = false;
     Matrix3f inverse;
     A.computeInverseWithCheck(inverse, invertible);
@@ -383,30 +383,28 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
         theta = top->twin->angle - base->angle * v_i->inVertex->bigTheta/M_2_PI;
         Vector2f newfk = top->edge->length * Vector2f(cos(theta), sin(theta));
 
-        Vector2f nijk = (fj - fi).cross(fk - fi);
-        Vector2f nnew = (newfj - newfi).cross(newfk - newfi);
-        Vector2f tijk = nijk.cross(edge);
-        Vector2f tnew = nnew.cross(-edge);
+        Vector2f tijk = Vector2f(-edge(1), edge(0));
+        Vector2f tnew = Vector2f(edge(1), -edge(0));
+        Vector2f dir2d = Vector2f(dir(0), dir(1));
 
-        Vector3f newDir = -((dir.dot(edge) * -edge) + (dir.dot(tijk) * tnew));
+        Vector2f newDir = -((dir2d.dot(edge) * -edge) + (dir2d.dot(tijk) * tnew));
         newDir.normalize();
         Vector2f p = bary(0) * fi + bary(1) * fj + bary(2) * fk;
 
         fi = newfi;
         fj = newfj;
         fk = newfk;
-        dir = newDir;
+        dir = Vector3f(newDir(0), newDir(1), 0.f);
         distance -= t;
 
-        A = Matrix3f(
-             fi(0), fj(0), fk(0),
+        A << fi(0), fj(0), fk(0),
              fi(1), fj(1), fk(1),
-             1.f, 1.f, 1.f);
+             1.f, 1.f, 1.f;
         invertible = false;
         Matrix3f inverse;
         A.computeInverseWithCheck(inverse, invertible);
         assert(invertible);
-        bary = inverse * p;
+        bary = inverse * Vector3f(p(0), p(1), 1.f);
         baryDir = inverse * dir;
 
         t = distance;
