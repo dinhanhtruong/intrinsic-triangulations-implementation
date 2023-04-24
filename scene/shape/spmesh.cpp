@@ -226,9 +226,209 @@ void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
     h_ik->angle = h_ij->angle +  (2*M_PI * theta_i_jk)/h_ij->v->bigTheta;
 }
 
+std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
+//    shared_ptr<InHalfedge> base = v_i->halfedge;
+//    while (base->next->next->twin != v_i->halfedge && base->next->next->twin->angle < angle) {
+//        base = base->next->next->twin;
+//    }
+//    shared_ptr<InHalfedge> top = base->next->next;
+//    float a = (angle - base->angle) * v_i->bigTheta/M_2_PI;
+//    Vector2f fi = Vector2f(0.f, 0.f);
+//    Vector2f fj = Vector2f(0.f, base->edge->length);
+//    Vector2f fk = top->edge->length * Vector2f(cos(top->twin->angle - base->angle), sin(top->twin->angle - base->angle));
+//    Vector3f bary = Vector3f(0.f, 0.f, 1.f);
+//    Vector3f dir = Vector3f(base->edge->length, atan(a) * base->edge->length, 0.f);
+//    dir.normalize();
+//    Matrix3f A = Matrix3f(
+//         fi(0), fj(0), fk(0),
+//         fi(1), fj(1), fk(1),
+//         1.f, 1.f, 1.f);
+//    bool invertible = false;
+//    Matrix3f inverse;
+//    A.computeInverseWithCheck(inverse, invertible);
+//    assert(invertible);
+//    Vector3f baryDir = inverse * dir;
+
+//    float t = distance;
+//    int minT = 0;
+//    for (int i = 0; i < 3; i++) {
+//        float ti = -bary(i)/baryDir(i);
+//        if (ti >= 0.f && ti < t) {
+//            t = ti;
+//            minT = i;
+//        }
+//    }
+
+//    while (t < distance) {
+//        Vector3f edgeIntersectBary = bary + t * baryDir;
+//        Vector2f edge;
+//        if (minT == 0) {
+//            edge = fj - fi;
+//            base = base->twin;
+//        } else if (minT == 1) {
+//            edge = fk - fj;
+//            base = base->next->twin;
+//        } else if (minT == 2) {
+//            edge = fi - fk;
+//            base = base->next->next->twin;
+//        }
+//        edge.normalize();
+//        top = base->next->next;
+//        Vector2f newfi = Vector2f(0.f, 0.f);
+//        Vector2f newfj = Vector2f(0.f, base->edge->length);
+//        Vector2f newfk = top->edge->length * Vector2f(cos(top->twin->angle - base->angle), sin(top->twin->angle - base->angle));
+
+//        Vector2f nijk = (fj - fi).cross(fk - fi);
+//        Vector2f nnew = (newfj - newfi).cross(newfk - newfi);
+//        Vector2f told = nijk.cross(edge);
+//        Vector2f tnew = nnew.cross(-edge);
+
+//        Vector3f newDir = -((dir.dot(edge) * -edge) + (dir.dot(told) * -tnew));
+//        newDir.normalize();
+//        Vector2f p = bary(0) * fi + bary(1) * fj + bary(2) * fk;
+
+//        fi = newfi;
+//        fj = newfj;
+//        fk = newfk;
+//        dir = newDir;
+//        distance -= t;
+
+//        A = Matrix3f(
+//             fi(0), fj(0), fk(0),
+//             fi(1), fj(1), fk(1),
+//             1.f, 1.f, 1.f);
+//        invertible = false;
+//        Matrix3f inverse;
+//        A.computeInverseWithCheck(inverse, invertible);
+//        assert(invertible);
+//        bary = inverse * p;
+//        baryDir = inverse * dir;
+
+//        t = distance;
+//        minT = 0;
+//        for (int i = 0; i < 3; i++) {
+//            float ti = -bary(i)/baryDir(i);
+//            if (ti >= 0.f && ti < t) {
+//                t = ti;
+//                minT = i;
+//            }
+//        }
+//    }
+//
+//    Vector3f newPointBary = bary + t * baryDir;
+    return make_tuple(nullptr, Vector3f(0, 0, 1), 0);
+}
+
 // algo 2: see note in header file
-std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> SPmesh::traceFromVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
-    return make_tuple(nullptr, Vector3f(0,0,0), 0);
+std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicVertex(std::shared_ptr<ExVertex> v_i, float distance, float angle) {
+    shared_ptr<InHalfedge> base = v_i->inVertex->halfedge;
+    while (base->next->next->twin != v_i->inVertex->halfedge && base->next->next->twin->angle < angle) {
+        base = base->next->next->twin;
+    }
+    shared_ptr<InHalfedge> top = base->next->next;
+    float a = (angle - base->angle) * v_i->inVertex->bigTheta/M_2_PI;
+    Vector2f fi = Vector2f(0.f, 0.f);
+    Vector2f fj = Vector2f(0.f, base->edge->length);
+    float theta = top->twin->angle - base->angle * v_i->inVertex->bigTheta/M_2_PI;
+    Vector2f fk = top->edge->length * Vector2f(cos(theta), sin(theta));
+    Vector3f bary = Vector3f(0.f, 0.f, 1.f);
+    Vector3f dir = Vector3f(base->edge->length, atan(a) * base->edge->length, 0.f);
+    dir.normalize();
+    Matrix3f A = Matrix3f(
+         fi(0), fj(0), fk(0),
+         fi(1), fj(1), fk(1),
+         1.f, 1.f, 1.f);
+    bool invertible = false;
+    Matrix3f inverse;
+    A.computeInverseWithCheck(inverse, invertible);
+    assert(invertible);
+    Vector3f baryDir = inverse * dir;
+
+    float t = distance;
+    int minT = 0;
+    for (int i = 0; i < 3; i++) {
+        if (baryDir(i) != 0.f) {
+            float ti = -bary(i)/baryDir(i);
+            if (ti > 0.f && ti < t) {
+                t = ti;
+                minT = i;
+            }
+        }
+    }
+    cout << "t:" << t << " d:" << distance << endl;
+    cout << minT << endl;
+
+    while (t < distance) {
+        Vector3f edgeIntersectBary = bary + t * baryDir;
+        Vector2f edge;
+        // I'm not totally sure if this logic here is right. Based on the minT I think these are the edges we are
+        // intersecting with but I'm actually not sure. an easy way to debug is to see which minT is being chose
+        // technically in this case minT==1 should never be chosen since we will never be intersecting back with
+        // the edge we're on. if you find this not to be true switch the edge and base assignments around based
+        // on which minT isn't being chosen
+        if (minT == 0) {
+            edge = fi - fk;
+            base = base->next->next->twin;
+        } else if (minT == 1) {
+            edge = fj - fi;
+            base = base->twin;
+        } else if (minT == 2) {
+            edge = fk - fj;
+            base = base->next->twin;
+        }
+        edge.normalize();
+        top = base->next->next;
+        Vector2f newfi = Vector2f(0.f, 0.f);
+        Vector2f newfj = Vector2f(0.f, base->edge->length);
+        theta = top->twin->angle - base->angle * v_i->inVertex->bigTheta/M_2_PI;
+        Vector2f newfk = top->edge->length * Vector2f(cos(theta), sin(theta));
+
+        Vector2f nijk = (fj - fi).cross(fk - fi);
+        Vector2f nnew = (newfj - newfi).cross(newfk - newfi);
+        Vector2f tijk = nijk.cross(edge);
+        Vector2f tnew = nnew.cross(-edge);
+
+        Vector3f newDir = -((dir.dot(edge) * -edge) + (dir.dot(tijk) * tnew));
+        newDir.normalize();
+        Vector2f p = bary(0) * fi + bary(1) * fj + bary(2) * fk;
+
+        fi = newfi;
+        fj = newfj;
+        fk = newfk;
+        dir = newDir;
+        distance -= t;
+
+        A = Matrix3f(
+             fi(0), fj(0), fk(0),
+             fi(1), fj(1), fk(1),
+             1.f, 1.f, 1.f);
+        invertible = false;
+        Matrix3f inverse;
+        A.computeInverseWithCheck(inverse, invertible);
+        assert(invertible);
+        bary = inverse * p;
+        baryDir = inverse * dir;
+
+        t = distance;
+        minT = 0;
+        for (int i = 0; i < 3; i++) {
+            float ti = -bary(i)/baryDir(i);
+            if (ti >= 0.f && ti < t) {
+                t = ti;
+                minT = i;
+            }
+        }
+        cout << "t:" << t << " d:" << distance << endl;
+    }
+
+    Vector3f newPointBary = bary + t * baryDir;
+    if (base->next == base->face->halfedge) {
+        newPointBary = Vector3f(newPointBary(1), newPointBary(2), newPointBary(0));
+    } else if (base->next->next == base->face->halfedge) {
+        newPointBary = Vector3f(newPointBary(2), newPointBary(0), newPointBary(1));
+    }
+
+    return make_tuple(base->face, newPointBary);
 }
 
 // algo 3: updates the signpost angles for every edge incident to the given vertex vi.
@@ -249,10 +449,11 @@ void SPmesh::updateVertex(shared_ptr<InVertex> v_i) {
     shared_ptr<InHalfedge> h_ij0 = v_i->halfedge;
     shared_ptr<InHalfedge> h_j0i = h_ij0->twin;
     // get extrinsic face containing i by tracing from j0 to i along EXTRINSIC mesh
-    auto [exTriangle, barycentricCoords, uTransformed] = traceFromVertex(
+    auto [exTriangle, barycentricCoords, uTransformed] = traceFromIntrinsicVertex(
                 h_j0i->v,
                 h_j0i->edge->length,
                 h_j0i->angle); // <- u vector in section 3.2.3 in the local coordinate system at v_j0
+    // TODO update to use vec3f u with 0 final coordinate
     // get -u in coordinate system of the extrinsic triangle (180 rotation of u from the trace query)
     float e_ij0_dir = (uTransformed < M_PI) ? (uTransformed + M_PI) : (uTransformed - M_PI); // in [0, 2*pi)
     h_ij0->angle = e_ij0_dir;
@@ -290,11 +491,17 @@ void SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
     eraseTriangle(ij->halfedge->face);
     eraseTriangle(ij->halfedge->twin->face);
     /// 2) insert 2 new intrinsic faces adjacent to flipped edge
-    insertTriangle(vi, vl, vk);
+    shared_ptr<InFace> inserted = insertTriangle(vi, vl, vk);
     insertTriangle(vj, vk, vl);
 
     // get new length of flipped edge
     float l_kl = baseLength(l_ki, l_il, theta);
+    // iterate around created face to find edge kl and assign length
+    shared_ptr<InHalfedge> kl = inserted->halfedge;
+    while (!((kl->v == vk || kl->twin->v == vk) && (kl->v == vl || kl->twin->v == vl))) {
+        kl = kl->next;
+    }
+    kl->edge->length = l_kl;
 
     // update signposts
     /// update angle of HE lk using lj
@@ -335,7 +542,7 @@ void SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f& barycentricCoo
     _verts.insert(p);
 
     // update signpost mesh connectivity
-    /// 1) remove the existing intrinsic face (and its half-edges, but not its verts)
+    /// 1) remove the existing intrinsic face
     eraseTriangle(face);
     /// 2) insert 3 new intrinsic faces around p and update half edge connectivity (will update signposts afterwards)
     insertTriangle(v_i, v_j, p);
@@ -482,7 +689,7 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
     // make empty face
     shared_ptr<InFace> newFace = make_shared<InFace>(InFace{}); // pick arbitrary half edge representative
     _faces.insert(newFace);
-    // construct new edges and their corresponding half-edges on this face if necessary. Link half edges of existing edges to their existing twins
+    // construct new edges and their corresponding half-edges on this face if necessary.
     shared_ptr<InHalfedge> newHalfEdge;
     shared_ptr<InHalfedge> newFaceRepresentativeHalfEdge = nullptr;
     auto vertices = vector{v0, v1, v2};
@@ -524,22 +731,7 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
             case 1: he_1 = newHalfEdge; break;
             case 2: he_2 = newHalfEdge; break;
         }
-
-/* old
-        newHalfEdge = make_shared<InHalfedge>(InHalfedge{currVertex, nullptr, twin, edge, nullptr, -1}); // initialize angle to -1 to indicate invalid
-        if (edge == nullptr) {
-            // edge does not exist: make one and connect it to the new halfEdge
-            edge = make_shared<InEdge>(InEdge{newHalfEdge, -1}); // initialize length to -1 to indicate invalid
-            newHalfEdge->edge = edge;
-        } else {
-            // link new half edge to its existing twin
-            twin->twin = newHalfEdge;
-        }
-        if (currVertex->halfedge == nullptr)
-            currVertex->halfedge = newHalfEdge; // set representative (don't touch existing representatives)
-          */
     }
-
 
     // set next pointers
     he_0->next = he_1;

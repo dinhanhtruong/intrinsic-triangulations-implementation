@@ -97,7 +97,8 @@ private:
     ///         the angle (in [0, 2*pi)) of the trace direction in the coordinate system of the final extrinsic triangle (i.e. relative to the reference of the extrinsic triangle)
     ///         I think this is a quantity you'll prob keep track of anyways in your algo bc the paper mentions transforming to new a triangle's coordinate system every time
     ///         the traced ray intersects an edge
-    std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> traceFromVertex(std::shared_ptr<InVertex> v_i, float distance, float angle);
+    std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> traceFromExtrinsicVertex(std::shared_ptr<ExVertex> v_i, float distance, float angle);
+    std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle);
     void updateVertex(std::shared_ptr<InVertex> i);
     void flipEdge(std::shared_ptr<InEdge> ij);
     float distance(float l_12, float l_23, float l_31, const Eigen::Vector3f p, const Eigen::Vector3f q);
