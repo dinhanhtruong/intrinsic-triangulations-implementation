@@ -491,11 +491,17 @@ void SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
     eraseTriangle(ij->halfedge->face);
     eraseTriangle(ij->halfedge->twin->face);
     /// 2) insert 2 new intrinsic faces adjacent to flipped edge
-    insertTriangle(vi, vl, vk);
+    shared_ptr<InFace> inserted = insertTriangle(vi, vl, vk);
     insertTriangle(vj, vk, vl);
 
     // get new length of flipped edge
     float l_kl = baseLength(l_ki, l_il, theta);
+    // iterate around created face to find edge kl and assign length
+    shared_ptr<InHalfedge> kl = inserted->halfedge;
+    while (!((kl->v == vk || kl->twin->v == vk) && (kl->v == vl || kl->twin->v == vl))) {
+        kl = kl->next;
+    }
+    kl->edge->length = l_kl;
 
     // update signposts
     /// update angle of HE lk using lj
