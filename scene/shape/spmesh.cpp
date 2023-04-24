@@ -453,6 +453,7 @@ void SPmesh::updateVertex(shared_ptr<InVertex> v_i) {
                 h_j0i->v,
                 h_j0i->edge->length,
                 h_j0i->angle); // <- u vector in section 3.2.3 in the local coordinate system at v_j0
+    // TODO update to use vec3f u with 0 final coordinate
     // get -u in coordinate system of the extrinsic triangle (180 rotation of u from the trace query)
     float e_ij0_dir = (uTransformed < M_PI) ? (uTransformed + M_PI) : (uTransformed - M_PI); // in [0, 2*pi)
     h_ij0->angle = e_ij0_dir;
@@ -535,7 +536,7 @@ void SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f& barycentricCoo
     _verts.insert(p);
 
     // update signpost mesh connectivity
-    /// 1) remove the existing intrinsic face (and its half-edges, but not its verts)
+    /// 1) remove the existing intrinsic face
     eraseTriangle(face);
     /// 2) insert 3 new intrinsic faces around p and update half edge connectivity (will update signposts afterwards)
     insertTriangle(v_i, v_j, p);
@@ -682,7 +683,7 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
     // make empty face
     shared_ptr<InFace> newFace = make_shared<InFace>(InFace{}); // pick arbitrary half edge representative
     _faces.insert(newFace);
-    // construct new edges and their corresponding half-edges on this face if necessary. Link half edges of existing edges to their existing twins
+    // construct new edges and their corresponding half-edges on this face if necessary.
     shared_ptr<InHalfedge> newHalfEdge;
     shared_ptr<InHalfedge> newFaceRepresentativeHalfEdge = nullptr;
     auto vertices = vector{v0, v1, v2};
@@ -724,22 +725,7 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
             case 1: he_1 = newHalfEdge; break;
             case 2: he_2 = newHalfEdge; break;
         }
-
-/* old
-        newHalfEdge = make_shared<InHalfedge>(InHalfedge{currVertex, nullptr, twin, edge, nullptr, -1}); // initialize angle to -1 to indicate invalid
-        if (edge == nullptr) {
-            // edge does not exist: make one and connect it to the new halfEdge
-            edge = make_shared<InEdge>(InEdge{newHalfEdge, -1}); // initialize length to -1 to indicate invalid
-            newHalfEdge->edge = edge;
-        } else {
-            // link new half edge to its existing twin
-            twin->twin = newHalfEdge;
-        }
-        if (currVertex->halfedge == nullptr)
-            currVertex->halfedge = newHalfEdge; // set representative (don't touch existing representatives)
-          */
     }
-
 
     // set next pointers
     he_0->next = he_1;
