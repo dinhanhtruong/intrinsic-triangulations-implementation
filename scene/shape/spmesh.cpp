@@ -883,8 +883,6 @@ void SPmesh::assignColors() {
 
 Eigen::Vector3f SPmesh::getBaryCoords(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3) {
     // courtesy of https://gamedev.stackexchange.com/questions/23743/whats-the-most-efficient-way-to-find-barycentric-coordinates
-    // NOTE that this doesn't take into account our assignment of barycentric coords for intrinsic vertices
-    // just doing it arbitrarily for the purposes of thresholding to get outlines
     Vector3f a = v2 - v1;
     Vector3f b = v3 - v1;
     Vector3f c = p - v1;
@@ -912,7 +910,8 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
         return -1;
     }
 
-    // TODO: call pointquery to get inFace and get inFace color
-
-    return 0;
+    // trace to get corresponding intrinsic face
+    tuple<shared_ptr<InFace>, Vector3f> intrinsic = pointQuery(exFace, p);
+    // return color of that face
+    return _faceColors[get<0>(intrinsic)];
 }
