@@ -54,6 +54,10 @@ public:
     void initSignpost();
     void validate();
 
+    // algo 11
+    std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> pointQuery(std::shared_ptr<ExFace> xyz, Eigen::Vector3f& p);
+
+    // visualization functions
     void assignColors();
     int getColor(const Triangle* tri, Eigen::Vector3f point);
 
@@ -75,7 +79,7 @@ private:
     float getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki);
     float baseLength(float a, float b, float theta);
     float angleBetween(float a, float b);
-    float argument(Eigen::Vector2f u, Eigen::Vector3f v);
+    float argument(Eigen::Vector2f u, Eigen::Vector2f v);
     Eigen::Vector3f getBaryCoords(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
     Eigen::Vector3f getVPos(std::shared_ptr<InVertex> v);
     std::shared_ptr<InEdge> getEdge(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1) const;
@@ -94,11 +98,10 @@ private:
     ///     (1) pointer to the extrinsic face containing the end point of the trace,
     ///     (2) barycentric coords of the end point
     ///     (3)** (this is the extra one my function needs):
-    ///         the angle (in [0, 2*pi)) of the trace direction in the coordinate system of the final extrinsic triangle (i.e. relative to the reference of the extrinsic triangle)
-    ///         I think this is a quantity you'll prob keep track of anyways in your algo bc the paper mentions transforming to new a triangle's coordinate system every time
-    ///         the traced ray intersects an edge
+    ///         direction vector u of the trace in the local 2D coordinate system of the destination EXTRINSIC triangle. First two
+    std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle);
     std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> traceFromExtrinsicVertex(std::shared_ptr<ExVertex> v_i, float distance, float angle);
-    std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle);
+    std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> traceVectorIntrinsic(std::shared_ptr<InHalfedge> base, Eigen::Vector3f baryCoords, float distance, float angle);
     void updateVertex(std::shared_ptr<InVertex> i);
     void flipEdge(std::shared_ptr<InEdge> ij);
     float distance(float l_12, float l_23, float l_31, const Eigen::Vector3f p, const Eigen::Vector3f q);

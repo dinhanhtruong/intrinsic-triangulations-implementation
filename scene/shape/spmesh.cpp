@@ -226,7 +226,7 @@ void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
     h_ik->angle = h_ij->angle +  (2*M_PI * theta_i_jk)/h_ij->v->bigTheta;
 }
 
-std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
+std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
 //    shared_ptr<InHalfedge> base = v_i->halfedge;
 //    while (base->next->next->twin != v_i->halfedge && base->next->next->twin->angle < angle) {
 //        base = base->next->next->twin;
@@ -316,7 +316,7 @@ std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, float> SPmesh::traceFromInt
 //    }
 //
 //    Vector3f newPointBary = bary + t * baryDir;
-    return make_tuple(nullptr, Vector3f(0, 0, 1), 0);
+    return make_tuple(nullptr, Vector3f(0, 0, 1), Vector2f(0, 0));
 }
 
 // algo 2: see note in header file
@@ -325,19 +325,25 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
     while (base->next->next->twin != v_i->inVertex->halfedge && base->next->next->twin->angle < angle) {
         base = base->next->next->twin;
     }
-    shared_ptr<InHalfedge> top = base->next->next;
     float a = (angle - base->angle) * v_i->inVertex->bigTheta/M_2_PI;
+    return traceVectorIntrinsic(base, Vector3f(1.f, 0.f, 0.f), distance, a);
+}
+
+
+// angle should be angle between trace phi and base phi
+std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsic(std::shared_ptr<InHalfedge> base, Eigen::Vector3f baryCoords, float distance, float angle) {
+    shared_ptr<InHalfedge> top = base->next->next;
     Vector2f fi = Vector2f(0.f, 0.f);
     Vector2f fj = Vector2f(0.f, base->edge->length);
-    float theta = top->twin->angle - base->angle * v_i->inVertex->bigTheta/M_2_PI;
+    float theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
     Vector2f fk = top->edge->length * Vector2f(cos(theta), sin(theta));
-    Vector3f bary = Vector3f(0.f, 0.f, 1.f);
-    Vector3f dir = Vector3f(base->edge->length, atan(a) * base->edge->length, 0.f);
+    Vector3f bary = baryCoords;
+    Vector3f dir = Vector3f(base->edge->length, atan(angle) * base->edge->length, 0.f);
     dir.normalize();
-    Matrix3f A = Matrix3f(
-         fi(0), fj(0), fk(0),
+    Matrix3f A;
+    A << fi(0), fj(0), fk(0),
          fi(1), fj(1), fk(1),
-         1.f, 1.f, 1.f);
+         1.f, 1.f, 1.f;
     bool invertible = false;
     Matrix3f inverse;
     A.computeInverseWithCheck(inverse, invertible);
@@ -380,33 +386,31 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
         top = base->next->next;
         Vector2f newfi = Vector2f(0.f, 0.f);
         Vector2f newfj = Vector2f(0.f, base->edge->length);
-        theta = top->twin->angle - base->angle * v_i->inVertex->bigTheta/M_2_PI;
+        theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
         Vector2f newfk = top->edge->length * Vector2f(cos(theta), sin(theta));
 
-        Vector2f nijk = (fj - fi).cross(fk - fi);
-        Vector2f nnew = (newfj - newfi).cross(newfk - newfi);
-        Vector2f tijk = nijk.cross(edge);
-        Vector2f tnew = nnew.cross(-edge);
+        Vector2f tijk = Vector2f(-edge(1), edge(0));
+        Vector2f tnew = Vector2f(edge(1), -edge(0));
+        Vector2f dir2d = Vector2f(dir(0), dir(1));
 
-        Vector3f newDir = -((dir.dot(edge) * -edge) + (dir.dot(tijk) * tnew));
+        Vector2f newDir = -((dir2d.dot(edge) * -edge) + (dir2d.dot(tijk) * tnew));
         newDir.normalize();
-        Vector2f p = bary(0) * fi + bary(1) * fj + bary(2) * fk;
+        Vector2f p = edgeIntersectBary(0) * fi + edgeIntersectBary(1) * fj + edgeIntersectBary(2) * fk;
 
         fi = newfi;
         fj = newfj;
         fk = newfk;
-        dir = newDir;
+        dir = Vector3f(newDir(0), newDir(1), 0.f);
         distance -= t;
 
-        A = Matrix3f(
-             fi(0), fj(0), fk(0),
+        A << fi(0), fj(0), fk(0),
              fi(1), fj(1), fk(1),
-             1.f, 1.f, 1.f);
+             1.f, 1.f, 1.f;
         invertible = false;
         Matrix3f inverse;
         A.computeInverseWithCheck(inverse, invertible);
         assert(invertible);
-        bary = inverse * p;
+        bary = inverse * Vector3f(p(0), p(1), 1.f);
         baryDir = inverse * dir;
 
         t = distance;
@@ -452,13 +456,14 @@ void SPmesh::updateVertex(shared_ptr<InVertex> v_i) {
     auto [exTriangle, barycentricCoords, uTransformed] = traceFromIntrinsicVertex(
                 h_j0i->v,
                 h_j0i->edge->length,
-                h_j0i->angle); // <- u vector in section 3.2.3 in the local coordinate system at v_j0
-    // TODO update to use vec3f u with 0 final coordinate
-    // get -u in coordinate system of the extrinsic triangle (180 rotation of u from the trace query)
-    float e_ij0_dir = (uTransformed < M_PI) ? (uTransformed + M_PI) : (uTransformed - M_PI); // in [0, 2*pi)
-    h_ij0->angle = e_ij0_dir;
-    // set barycentric coords of vi in the extrinsic triangle
+                h_j0i->angle); // <- u vector in section 3.2.3 in the local polar coordinate system at v_j0
+
+    // NOTE: reference direction e_xyz of extrinsic face is along edge xy where x=(1,0,0) and y=(0,1,0) in barycentric coords
+    // In 2D local coords, it is the vector from (0,0) to (1,0)
+    h_ij0->angle = argument(Vector2f(1,0), -uTransformed);
+    // set barycentric coords of vi (located inside the extrinsic triangle)
     v_i->barycentricPos = barycentricCoords;
+    v_i->exFace = exTriangle;
 
     // 2) update remaining outgoing angles phi_ij in ccw order
     currHalfEdge = v_i->halfedge;
@@ -586,7 +591,7 @@ void SPmesh::moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab
     float l_ab = ia->next->edge->length;
     float l_bi = ia->next->next->edge->length;
 
-    std::pair<float, float> rPhi = vectorToPoint(l_ia, l_ab, l_bi, i->barycentricPos, a->barycentricPos, p); // vector from i to p
+    std::pair<float, float> rPhi = vectorToPoint(l_ia, l_ab, l_bi, i->barycentricPos, a->barycentricPos, p); // vector from i to p relative to ia
     float r = rPhi.first;
     float phi = rPhi.second; // angle of ip relative to ia
     // since i is inserted, all adjacent faces are coplanar and bigTheta_i=2*pi which means:
@@ -606,6 +611,24 @@ void SPmesh::moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab
 
     // update signpost angles for adjacent halfedges
     updateVertex(i);
+}
+
+// algo 11: takes the barycentric coords of point on extrinsic face and returns the barycentric coordinates of that position on its intrinsic face
+std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::pointQuery(std::shared_ptr<ExFace> xyz, Eigen::Vector3f& p) {
+    std::shared_ptr<ExHalfedge> xy = xyz->halfedge;
+
+    std::shared_ptr<ExVertex> x = xy->v;
+    std::shared_ptr<ExVertex> y = xy->next->v;
+    std::shared_ptr<ExVertex> z = xy->next->next->v;
+
+    float l_xy = (y->pos - x->pos).norm();
+    float l_yz = (z->pos - y->pos).norm();
+    float l_zx = (x->pos - z->pos).norm();
+
+    // vector from x to p relative to xy
+    std::pair<float, float> rPhi = vectorToPoint(l_xy, l_yz, l_zx, x->inVertex->barycentricPos, y->inVertex->barycentricPos, p);
+
+    return traceFromExtrinsicVertex(x, rPhi.first, rPhi.second);
 }
 
 
@@ -629,8 +652,6 @@ float SPmesh::baseLength(float a, float b, float theta) {
     return sqrt(a * a + b * b + 2 * a * b * cos(theta));
 }
 
-/// note from Mehek: need to clarify what this is supposed to do. I implemented it based on the way it was described
-/// but I don't think that matches what 3.3.3 is using it for
 // HELPER: returns smallest unsigned angle between the points on the unit circle given by angles a,b
 float SPmesh::angleBetween(float a, float b) {
     float diff = abs(a - b); // get positive diff
@@ -643,10 +664,13 @@ float SPmesh::getAngle(Vector3f u, Vector3f v) {
     return acos(u.normalized().dot(v.normalized()));
 }
 
-// HELPER: returns the ccw angle FROM vector u TO vector v in the range [0, 2*pi). Imagine fixing u as the x-axis in R^2 and going ccw to find v.
-float SPmesh::argument(Vector2f u, Vector3f v) {
+// HELPER: returns the ccw angle FROM vector u TO vector v in the range [0, 2*pi).
+//Imagine fixing u as the x-axis in R^2 and going ccw to find v.
+float SPmesh::argument(Vector2f u, Vector2f v) {
+    Vector2f a = u.normalized();
+    Vector2f b = v.normalized();
     // adapted from  https://stackoverflow.com/questions/40286650/how-to-get-the-anti-clockwise-angle-between-two-2d-vectors
-    float angle = atan2(u[0]*v[1] - u[1]*v[0], u[0]*v[0] + u[1]*v[1]);
+    float angle = atan2(a[0]*b[1] - a[1]*b[0], a[0]*b[0] + a[1]*b[1]);
     if (angle < 0) {
         angle += 2*M_PI;
     }
@@ -655,18 +679,18 @@ float SPmesh::argument(Vector2f u, Vector3f v) {
 
 // HELPER: removes the given intrinsic triangle.
 // Also removes any incident InEdges that would no longer border two faces after the current removal
-// Face's halfedges are preserved (unless the edge was removed, then the halfedges would also be removed)
+// All of the face's edges and their halfedges are preserved
 void SPmesh::eraseTriangle(shared_ptr<InFace> tri) {
     shared_ptr<InHalfedge> startHalfEdge = tri->halfedge;
     shared_ptr<InHalfedge> currHalfEdge = startHalfEdge;
     do {
         currHalfEdge->face = nullptr;
-        if (!currHalfEdge->twin->face) {
-            // remove curr InEdge entirely since it is no longer adjacent to any faces (e.g. if two adjacent faces are erased, shared edge is also erased on the 2nd call)
-            _edges.erase(currHalfEdge->edge);
-            _halfedges.erase(currHalfEdge);
-            _halfedges.erase(currHalfEdge->twin);
-        }
+//        if (!currHalfEdge->twin->face) {
+//            // remove curr InEdge entirely since it is no longer adjacent to any faces (e.g. if two adjacent faces are erased, shared edge is also erased on the 2nd call)
+//            _edges.erase(currHalfEdge->edge);
+//            _halfedges.erase(currHalfEdge);
+//            _halfedges.erase(currHalfEdge->twin);
+//        }
 
         currHalfEdge = currHalfEdge->next;
     } while(currHalfEdge != startHalfEdge);
@@ -683,7 +707,7 @@ shared_ptr<InHalfedge> SPmesh::getHalfEdgeWithSource(shared_ptr<InEdge> edge, sh
     return (he_0->v == sourceVertex) ? he_0 : he_1;
 }
 
-// HELPER: inserts an intrinsic triangle whose vertices are v0, v1, v2. Assumes v0,v1,v2 are provided in ccw order.
+// HELPER: inserts an intrinsic triangle whose vertices are v0, v1, v2. Assumes v0,v1,v2 are provided in ccw order. halfedge (v0, v1) will be assigned as the representative of the face
 // does not assume that there exist faces adjacent to the triangle (v0,v1,v2). Can be called in any order to insert multiple adjacent faces.
 shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<InVertex> v1, shared_ptr<InVertex> v2) {
     // make empty face
