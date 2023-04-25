@@ -326,7 +326,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
         base = base->next->next->twin;
     }
     float a = (angle - base->angle) * v_i->inVertex->bigTheta/M_2_PI;
-    return traceVectorIntrinsic(base, Vector3f(0.f, 0.f, 1.f), distance, a);
+    return traceVectorIntrinsic(base, Vector3f(1.f, 0.f, 0.f), distance, a);
 }
 
 
@@ -591,7 +591,7 @@ void SPmesh::moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab
     float l_ab = ia->next->edge->length;
     float l_bi = ia->next->next->edge->length;
 
-    std::pair<float, float> rPhi = vectorToPoint(l_ia, l_ab, l_bi, i->barycentricPos, a->barycentricPos, p); // vector from i to p
+    std::pair<float, float> rPhi = vectorToPoint(l_ia, l_ab, l_bi, i->barycentricPos, a->barycentricPos, p); // vector from i to p relative to ia
     float r = rPhi.first;
     float phi = rPhi.second; // angle of ip relative to ia
     // since i is inserted, all adjacent faces are coplanar and bigTheta_i=2*pi which means:
@@ -611,6 +611,24 @@ void SPmesh::moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab
 
     // update signpost angles for adjacent halfedges
     updateVertex(i);
+}
+
+// algo 11: takes the barycentric coords of point on extrinsic face and returns the barycentric coordinates of that position on its intrinsic face
+std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::pointQuery(std::shared_ptr<ExFace> xyz, Eigen::Vector3f& p) {
+    std::shared_ptr<ExHalfedge> xy = xyz->halfedge;
+
+    std::shared_ptr<ExVertex> x = xy->v;
+    std::shared_ptr<ExVertex> y = xy->next->v;
+    std::shared_ptr<ExVertex> z = xy->next->next->v;
+
+    float l_xy = (y->pos - x->pos).norm();
+    float l_yz = (z->pos - y->pos).norm();
+    float l_zx = (x->pos - z->pos).norm();
+
+    // vector from x to p relative to xy
+    std::pair<float, float> rPhi = vectorToPoint(l_xy, l_yz, l_zx, x->inVertex->barycentricPos, y->inVertex->barycentricPos, p);
+
+    return traceFromExtrinsicVertex(x, rPhi.first, rPhi.second);
 }
 
 
@@ -634,8 +652,6 @@ float SPmesh::baseLength(float a, float b, float theta) {
     return sqrt(a * a + b * b + 2 * a * b * cos(theta));
 }
 
-/// note from Mehek: need to clarify what this is supposed to do. I implemented it based on the way it was described
-/// but I don't think that matches what 3.3.3 is using it for
 // HELPER: returns smallest unsigned angle between the points on the unit circle given by angles a,b
 float SPmesh::angleBetween(float a, float b) {
     float diff = abs(a - b); // get positive diff

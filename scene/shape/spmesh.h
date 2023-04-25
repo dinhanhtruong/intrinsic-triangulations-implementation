@@ -53,6 +53,9 @@ public:
     void initSignpost();
     void validate();
 
+    // algo 11
+    std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> pointQuery(std::shared_ptr<ExFace> xyz, Eigen::Vector3f& p);
+
 private:
     /// validator helpers
     void checkCircular(const std::shared_ptr<InHalfedge> &halfedge);
