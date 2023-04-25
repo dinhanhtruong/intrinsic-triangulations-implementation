@@ -42,7 +42,12 @@ void SPmesh::initFromVectors(const vector<Vector3f> &vertices,
     _exMesh.init(vertices.size(), faces.size());
 
     loadHalfEdges();
+    _exMesh.validate();
+    cout << "extrinsic mesh validated" << endl;
+
     initSignpost();
+    validate();
+    cout << "intrinsic mesh validated" << endl;
 }
 
 void SPmesh::loadHalfEdges() {
@@ -168,12 +173,6 @@ void SPmesh::loadHalfEdges() {
         inToExHalfedge.insert({h1, exh1});
     }
     cout << _edges.size() << endl;
-
-    cout << "loaded" << endl;
-    validate();
-    cout << "other" << endl;
-    _exMesh.validate();
-    cout << "validated" << endl;
 }
 
 
@@ -361,8 +360,8 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
             }
         }
     }
-    cout << "t:" << t << " d:" << distance << endl;
-    cout << minT << endl;
+//    cout << "t:" << t << " d:" << distance << endl;
+//    cout << minT << endl;
 
     while (t < distance) {
         Vector3f edgeIntersectBary = bary + t * baryDir;
@@ -422,7 +421,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
                 minT = i;
             }
         }
-        cout << "t:" << t << " d:" << distance << endl;
+//        cout << "t:" << t << " d:" << distance << endl;
     }
 
     Vector3f newPointBary = bary + t * baryDir;
@@ -524,7 +523,8 @@ float SPmesh::distance(float l_12, float l_23, float l_31, const Vector3f p, con
         pow(l_23, 2)*u[1]*u[2] +
         pow(l_31, 2)*u[2]*u[0]
     );
-    return sqrt(d);
+    assert(d >= 0); // formula almost always yields d<0?
+    return sqrt(abs(d));
 }
 
 // algo 7: inserts a new intrinsic vertex in the given intrinsic face ijk at the position specified using barycentric coords
@@ -579,17 +579,12 @@ std::pair<float, float> SPmesh::vectorToPoint(float l_ij, float l_jk, float l_ki
 
 // algo 10: moves inserted vertex i to p given by nonnegative barycentric coords inside triangle iab
 void SPmesh::moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab, const Eigen::Vector3f &p) {
-    // need to get vertex a but don't know what iab points to
-    // loop until we get the HE starting at i (which is HE ia)
     std::shared_ptr<InHalfedge> ia = iab->halfedge;
-    while (ia->v != i) {
-        ia = ia->next;
-    }
-    std::shared_ptr<InVertex> a = ia->next->v;
-
     float l_ia = ia->edge->length;
     float l_ab = ia->next->edge->length;
     float l_bi = ia->next->next->edge->length;
+
+    std::shared_ptr<InVertex> a = ia->next->v; /// TODO: (mehek) has no barycentric pos for initial vertices but can't hardcode coords
 
     std::pair<float, float> rPhi = vectorToPoint(l_ia, l_ab, l_bi, i->barycentricPos, a->barycentricPos, p); // vector from i to p relative to ia
     float r = rPhi.first;
@@ -626,7 +621,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::pointQuery(std::sha
     float l_zx = (x->pos - z->pos).norm();
 
     // vector from x to p relative to xy
-    std::pair<float, float> rPhi = vectorToPoint(l_xy, l_yz, l_zx, x->inVertex->barycentricPos, y->inVertex->barycentricPos, p);
+    std::pair<float, float> rPhi = vectorToPoint(l_xy, l_yz, l_zx, Vector3f(1, 0, 0), Vector3f(0, 1, 0), p);
 
     return traceFromExtrinsicVertex(x, rPhi.first, rPhi.second);
 }
@@ -800,6 +795,10 @@ shared_ptr<InEdge> SPmesh::getEdge(shared_ptr<InVertex> v0, shared_ptr<InVertex>
 //}
 
 
+//////////////////////////////////////////////
+/////////////// VALIDATION ///////////////////
+//////////////////////////////////////////////
+
 void SPmesh::checkCircular(const shared_ptr<InHalfedge> &halfedge) {
     assert(halfedge == halfedge->next->next->next);
     assert(halfedge->face == halfedge->next->face);
@@ -834,6 +833,8 @@ void SPmesh::checkVertices() {
             curr = curr->twin->next;
         }
         assert(curr == v->halfedge);
+        assert(v->exVertex->inVertex == v);
+        assert(v->bigTheta > 0);
     }
 }
 
@@ -841,7 +842,7 @@ void SPmesh::validate() {
     for (const shared_ptr<InHalfedge> &halfedge: _halfedges) {
         assert(halfedge->angle >= 0);
         assert(halfedge->angle < 2*M_PI);
-        //assert(halfedge->edge->length > 0); // TODO: this is failing
+        assert(halfedge->edge->length > 0);
 
         checkCircular(halfedge);
         checkTwin(halfedge);
@@ -849,6 +850,11 @@ void SPmesh::validate() {
     checkFaces();
     checkVertices();
 }
+
+
+//////////////////////////////////////////////
+///////////// VISUALIZATION //////////////////
+//////////////////////////////////////////////
 
 void SPmesh::assignColors() {
     // adapted from https://www.geeksforgeeks.org/graph-coloring-set-2-greedy-algorithm/#
