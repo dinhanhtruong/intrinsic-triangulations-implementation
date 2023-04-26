@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include <memory>
 
 
@@ -25,16 +26,19 @@ typedef struct ExHalfedge {
     std::shared_ptr<ExHalfedge> twin;
     std::shared_ptr<ExEdge> edge;
     std::shared_ptr<ExFace> face;
+    float angle;
 } ExHalfedge;
 
 typedef struct ExVertex {
     std::shared_ptr<ExHalfedge> halfedge;
     Eigen::Vector3f pos;
     std::shared_ptr<InVertex> inVertex;
+    float bigTheta;
 } ExVertex;
 
 typedef struct ExEdge {
     std::shared_ptr<ExHalfedge> halfedge;
+    float length;
 } ExEdge;
 
 typedef struct ExFace {

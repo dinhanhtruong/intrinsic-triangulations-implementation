@@ -207,6 +207,18 @@ void SPmesh::initSignpost() {
         } 
     }
 
+    for (shared_ptr<InVertex> v: _verts) {
+        v->exVertex->bigTheta = v->bigTheta;
+        shared_ptr<InHalfedge> curr = v->halfedge;
+        shared_ptr<ExHalfedge> exCurr = v->exVertex->halfedge;
+        do {
+            exCurr->angle = curr->angle;
+            exCurr->edge->length = curr->edge->length;
+            curr = curr->next->next->twin;
+            exCurr = exCurr->next->next->twin;
+        } while (curr != v->halfedge);
+    }
+
     cout << "initialized signpost values" << endl;
 }
 
@@ -226,96 +238,128 @@ void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
 }
 
 std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
-//    shared_ptr<InHalfedge> base = v_i->halfedge;
-//    while (base->next->next->twin != v_i->halfedge && base->next->next->twin->angle < angle) {
-//        base = base->next->next->twin;
-//    }
-//    shared_ptr<InHalfedge> top = base->next->next;
-//    float a = (angle - base->angle) * v_i->bigTheta/M_2_PI;
-//    Vector2f fi = Vector2f(0.f, 0.f);
-//    Vector2f fj = Vector2f(0.f, base->edge->length);
-//    Vector2f fk = top->edge->length * Vector2f(cos(top->twin->angle - base->angle), sin(top->twin->angle - base->angle));
-//    Vector3f bary = Vector3f(0.f, 0.f, 1.f);
-//    Vector3f dir = Vector3f(base->edge->length, atan(a) * base->edge->length, 0.f);
-//    dir.normalize();
-//    Matrix3f A = Matrix3f(
-//         fi(0), fj(0), fk(0),
-//         fi(1), fj(1), fk(1),
-//         1.f, 1.f, 1.f);
-//    bool invertible = false;
-//    Matrix3f inverse;
-//    A.computeInverseWithCheck(inverse, invertible);
-//    assert(invertible);
-//    Vector3f baryDir = inverse * dir;
+    shared_ptr<ExHalfedge> base;
+    Vector3f baryCoords;
+    if (v_i->exVertex == nullptr) {
+        baryCoords = v_i->barycentricPos;
+        base = v_i->exFace->halfedge;
+    } else {
+        base = v_i->exVertex->halfedge;
+        while (base->next->next->twin != v_i->exVertex->halfedge && base->next->next->twin->angle < angle) {
+            base = base->next->next->twin;
+        }
+    }
+    float a = fmod(angle - base->angle, M_2_PI) * v_i->exVertex->bigTheta/M_2_PI;
+    return traceVectorExtrinsic(base, baryCoords, distance, a);
+}
 
-//    float t = distance;
-//    int minT = 0;
-//    for (int i = 0; i < 3; i++) {
-//        float ti = -bary(i)/baryDir(i);
-//        if (ti >= 0.f && ti < t) {
-//            t = ti;
-//            minT = i;
-//        }
-//    }
+std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceVectorExtrinsic(std::shared_ptr<ExHalfedge> base, Eigen::Vector3f baryCoords, float distance, float angle) {
+    shared_ptr<ExHalfedge> top = base->next->next;
+    Vector2f fi = Vector2f(0.f, 0.f);
+    Vector2f fj = Vector2f(0.f, base->edge->length);
+    float theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
+    Vector2f fk = top->edge->length * Vector2f(cos(theta), sin(theta));
+    Vector3f bary = baryCoords;
+    Vector3f dir;
+    if (angle - M_PI/2.f < 0.f && angle - M_PI/2.f > M_PI) {
+        dir = Vector3f(base->edge->length, atan(angle) * base->edge->length, 0.f);
+    } else {
+        dir = Vector3f(-base->edge->length, atan(angle) * -base->edge->length, 0.f);
+    }
+    dir.normalize();
+    Matrix3f A;
+    A << fi(0), fj(0), fk(0),
+         fi(1), fj(1), fk(1),
+         1.f, 1.f, 1.f;
+    bool invertible = false;
+    Matrix3f inverse;
+    A.computeInverseWithCheck(inverse, invertible);
+    assert(invertible);
+    Vector3f baryDir = inverse * dir;
 
-//    while (t < distance) {
-//        Vector3f edgeIntersectBary = bary + t * baryDir;
-//        Vector2f edge;
-//        if (minT == 0) {
-//            edge = fj - fi;
-//            base = base->twin;
-//        } else if (minT == 1) {
-//            edge = fk - fj;
-//            base = base->next->twin;
-//        } else if (minT == 2) {
-//            edge = fi - fk;
-//            base = base->next->next->twin;
-//        }
-//        edge.normalize();
-//        top = base->next->next;
-//        Vector2f newfi = Vector2f(0.f, 0.f);
-//        Vector2f newfj = Vector2f(0.f, base->edge->length);
-//        Vector2f newfk = top->edge->length * Vector2f(cos(top->twin->angle - base->angle), sin(top->twin->angle - base->angle));
+    float t = distance;
+    int minT = 0;
+    for (int i = 0; i < 3; i++) {
+        if (baryDir(i) != 0.f) {
+            float ti = -bary(i)/baryDir(i);
+            if (ti > 0.f && ti < t) {
+                t = ti;
+                minT = i;
+            }
+        }
+    }
+//    cout << "t:" << t << " d:" << distance << endl;
+//    cout << minT << endl;
 
-//        Vector2f nijk = (fj - fi).cross(fk - fi);
-//        Vector2f nnew = (newfj - newfi).cross(newfk - newfi);
-//        Vector2f told = nijk.cross(edge);
-//        Vector2f tnew = nnew.cross(-edge);
+    while (t < distance) {
+        Vector3f edgeIntersectBary = bary + t * baryDir;
+        Vector2f edge;
+        // I'm not totally sure if this logic here is right. Based on the minT I think these are the edges we are
+        // intersecting with but I'm actually not sure. an easy way to debug is to see which minT is being chose
+        // technically in this case minT==1 should never be chosen since we will never be intersecting back with
+        // the edge we're on. if you find this not to be true switch the edge and base assignments around based
+        // on which minT isn't being chosen
+        if (minT == 0) {
+            edge = fi - fk;
+            base = base->next->next->twin;
+        } else if (minT == 1) {
+            edge = fj - fi;
+            base = base->twin;
+        } else if (minT == 2) {
+            edge = fk - fj;
+            base = base->next->twin;
+        }
+        edge.normalize();
+        top = base->next->next;
+        Vector2f newfi = Vector2f(0.f, 0.f);
+        Vector2f newfj = Vector2f(0.f, base->edge->length);
+        theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
+        Vector2f newfk = top->edge->length * Vector2f(cos(theta), sin(theta));
 
-//        Vector3f newDir = -((dir.dot(edge) * -edge) + (dir.dot(told) * -tnew));
-//        newDir.normalize();
-//        Vector2f p = bary(0) * fi + bary(1) * fj + bary(2) * fk;
+        Vector2f tijk = Vector2f(-edge(1), edge(0));
+        Vector2f tnew = Vector2f(edge(1), -edge(0));
+        Vector2f dir2d = Vector2f(dir(0), dir(1));
 
-//        fi = newfi;
-//        fj = newfj;
-//        fk = newfk;
-//        dir = newDir;
-//        distance -= t;
+        Vector2f newDir = -((dir2d.dot(edge) * -edge) + (dir2d.dot(tijk) * tnew));
+        newDir.normalize();
+        Vector2f p = edgeIntersectBary(0) * fi + edgeIntersectBary(1) * fj + edgeIntersectBary(2) * fk;
 
-//        A = Matrix3f(
-//             fi(0), fj(0), fk(0),
-//             fi(1), fj(1), fk(1),
-//             1.f, 1.f, 1.f);
-//        invertible = false;
-//        Matrix3f inverse;
-//        A.computeInverseWithCheck(inverse, invertible);
-//        assert(invertible);
-//        bary = inverse * p;
-//        baryDir = inverse * dir;
+        fi = newfi;
+        fj = newfj;
+        fk = newfk;
+        dir = Vector3f(newDir(0), newDir(1), 0.f);
+        distance -= t;
 
-//        t = distance;
-//        minT = 0;
-//        for (int i = 0; i < 3; i++) {
-//            float ti = -bary(i)/baryDir(i);
-//            if (ti >= 0.f && ti < t) {
-//                t = ti;
-//                minT = i;
-//            }
-//        }
-//    }
-//
-//    Vector3f newPointBary = bary + t * baryDir;
-    return make_tuple(nullptr, Vector3f(0, 0, 1), Vector2f(0, 0));
+        A << fi(0), fj(0), fk(0),
+             fi(1), fj(1), fk(1),
+             1.f, 1.f, 1.f;
+        invertible = false;
+        Matrix3f inverse;
+        A.computeInverseWithCheck(inverse, invertible);
+        assert(invertible);
+        bary = inverse * Vector3f(p(0), p(1), 1.f);
+        baryDir = inverse * dir;
+
+        t = distance;
+        minT = 0;
+        for (int i = 0; i < 3; i++) {
+            float ti = -bary(i)/baryDir(i);
+            if (ti >= 0.f && ti < t) {
+                t = ti;
+                minT = i;
+            }
+        }
+//        cout << "t:" << t << " d:" << distance << endl;
+    }
+
+    Vector3f newPointBary = bary + t * baryDir;
+    if (base->next == base->face->halfedge) {
+        newPointBary = Vector3f(newPointBary(1), newPointBary(2), newPointBary(0));
+    } else if (base->next->next == base->face->halfedge) {
+        newPointBary = Vector3f(newPointBary(2), newPointBary(0), newPointBary(1));
+    }
+
+    return make_tuple(base->face, newPointBary, Vector2f(baryDir(0), baryDir(1)));
 }
 
 // algo 2: see note in header file
