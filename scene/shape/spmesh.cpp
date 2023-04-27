@@ -364,6 +364,7 @@ std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::tr
 }
 
 // algo 2: see note in header file
+// the angle argument is the normalized/projected phi angle in the range [0, 2pi]
 std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicVertex(std::shared_ptr<ExVertex> v_i, float distance, float angle) {
     shared_ptr<InHalfedge> base = v_i->inVertex->halfedge;
     while (base->next->next->twin != v_i->inVertex->halfedge && base->next->next->twin->angle < angle) {
@@ -374,7 +375,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
 }
 
 
-// angle should be angle between trace phi and base phi
+// angle should be the flat intrinsic angle (NOT phi)
 std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsic(std::shared_ptr<InHalfedge> base, Eigen::Vector3f baryCoords, float distance, float angle) {
     shared_ptr<InHalfedge> top = base->next->next;
     Vector2f fi = Vector2f(0.f, 0.f);
