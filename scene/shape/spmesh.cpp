@@ -234,7 +234,7 @@ void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
     float l_ki = h_ij->next->next->edge->length;
     // update angle (phi) of halfedge ik
     float theta_i_jk = getAngleFromEdgeLengths(l_ij, l_jk, l_ki); // euclidean angle of opposite edge ik relative to ij (i.e. interior angle at vertex i between ij and ik)
-    h_ik->angle = h_ij->angle +  (2*M_PI * theta_i_jk)/h_ij->v->bigTheta;
+    h_ik->angle = h_ij->angle +  (M_2_PI * theta_i_jk)/h_ij->v->bigTheta;
 }
 
 std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
@@ -262,7 +262,7 @@ std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::tr
     Vector2f fk = top->edge->length * Vector2f(cos(theta), sin(theta));
     Vector3f bary = baryCoords;
     Vector3f dir;
-    if (angle - M_PI/2.f < 0.f && angle - M_PI/2.f > M_PI) {
+    if (angle - M_PI_2 < 0.f && angle - M_PI_2 > M_PI) {
         dir = Vector3f(base->edge->length, atan(angle) * base->edge->length, 0.f);
     } else {
         dir = Vector3f(-base->edge->length, atan(angle) * -base->edge->length, 0.f);
@@ -568,8 +568,7 @@ float SPmesh::distance(float l_12, float l_23, float l_31, const Vector3f p, con
         pow(l_23, 2)*u[1]*u[2] +
         pow(l_31, 2)*u[2]*u[0]
     );
-    assert(d >= 0); // formula almost always yields d<0?
-    return sqrt(abs(d));
+    return sqrt(d);
 }
 
 // algo 7: inserts a new intrinsic vertex in the given intrinsic face ijk at the position specified using barycentric coords
@@ -631,7 +630,7 @@ void SPmesh::moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab
 
     std::shared_ptr<InVertex> a = ia->next->v; /// TODO: (mehek) has no barycentric pos for initial vertices but can't hardcode coords
 
-    std::pair<float, float> rPhi = vectorToPoint(l_ia, l_ab, l_bi, i->barycentricPos, a->barycentricPos, p); // vector from i to p relative to ia
+    std::pair<float, float> rPhi = vectorToPoint(l_ia, l_ab, l_bi, i->barycentricPos, Vector3f(0, 1, 0), p); // vector from i to p relative to ia
     float r = rPhi.first;
     float phi = rPhi.second; // angle of ip relative to ia
     // since i is inserted, all adjacent faces are coplanar and bigTheta_i=2*pi which means:
@@ -689,13 +688,13 @@ float SPmesh::getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki) {
 
 // HELPER: returns the third side length of a triangle with side lengths a,b meeting at angle theta (law of cos)
 float SPmesh::baseLength(float a, float b, float theta) {
-    return sqrt(a * a + b * b + 2 * a * b * cos(theta));
+    return sqrt(a * a + b * b - 2 * a * b * cos(theta));
 }
 
 // HELPER: returns smallest unsigned angle between the points on the unit circle given by angles a,b
 float SPmesh::angleBetween(float a, float b) {
     float diff = abs(a - b); // get positive diff
-    if (diff > M_PI) diff = 2.f * M_PI - diff; // smaller angle should be in [0, pi]
+    if (diff > M_PI) diff = M_2_PI - diff; // smaller angle should be in [0, pi]
     return diff;
 }
 
@@ -712,7 +711,7 @@ float SPmesh::argument(Vector2f u, Vector2f v) {
     // adapted from  https://stackoverflow.com/questions/40286650/how-to-get-the-anti-clockwise-angle-between-two-2d-vectors
     float angle = atan2(a[0]*b[1] - a[1]*b[0], a[0]*b[0] + a[1]*b[1]);
     if (angle < 0) {
-        angle += 2*M_PI;
+        angle += M_2_PI;
     }
     return angle;
 }
@@ -886,7 +885,7 @@ void SPmesh::checkVertices() {
 void SPmesh::validate() {
     for (const shared_ptr<InHalfedge> &halfedge: _halfedges) {
         assert(halfedge->angle >= 0);
-        assert(halfedge->angle < 2*M_PI);
+        assert(halfedge->angle < M_2_PI);
         assert(halfedge->edge->length > 0);
 
         checkCircular(halfedge);
