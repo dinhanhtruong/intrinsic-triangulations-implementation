@@ -244,6 +244,7 @@ std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::tr
         baryCoords = v_i->barycentricPos;
         base = v_i->exFace->halfedge;
     } else {
+        baryCoords = Vector3f(1.f, 0.f, 0.f);
         base = v_i->exVertex->halfedge;
         while (base->next->next->twin != v_i->exVertex->halfedge && base->next->next->twin->angle < angle) {
             base = base->next->next->twin;
