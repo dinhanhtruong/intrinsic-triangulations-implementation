@@ -882,11 +882,30 @@ void SPmesh::checkVertices() {
     }
 }
 
+bool isEqual(float a, float b, float epsilon=0.01) {
+    return abs(a-b) < epsilon;
+}
+
+//void SPmesh::validateSignpost() {
+//    for (const shared_ptr<InHalfedge> &halfedge: _halfedges) {
+//        // strictly positive edge lengths
+//       assert(halfedge->edge->length > 0);
+
+//    }
+//    for (const shared_ptr<InFace> &face: face) {
+//        // edges satisfy triangle inequality
+
+//        // angles sum to 180 degree (up to float error)
+//        shared_ptr<>
+//    }
+
+//}
+
 void SPmesh::validate() {
     for (const shared_ptr<InHalfedge> &halfedge: _halfedges) {
         assert(halfedge->angle >= 0);
         assert(halfedge->angle < 2*M_PI);
-        assert(halfedge->edge->length > 0);
+
 
         checkCircular(halfedge);
         checkTwin(halfedge);
