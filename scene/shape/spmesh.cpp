@@ -51,6 +51,9 @@ void SPmesh::initFromVectors(const vector<Vector3f> &vertices,
 }
 
 void SPmesh::loadHalfEdges() {
+    for (Vector3f& vert: _vertices) {
+        cout << vert.transpose() << endl;
+    }
     cout << "vertices " << _vertices.size() << endl;
     unordered_map<int, shared_ptr<InVertex>> inVerts;
     for (int i = 0; i < _vertices.size(); i++) {
@@ -378,7 +381,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
 std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsic(std::shared_ptr<InHalfedge> base, Eigen::Vector3f baryCoords, float distance, float angle) {
     shared_ptr<InHalfedge> top = base->next->next;
     Vector2f fi = Vector2f(0.f, 0.f);
-    Vector2f fj = Vector2f(0.f, base->edge->length);
+    Vector2f fj = Vector2f(base->edge->length, 0.f);
     float theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
     Vector2f fk = top->edge->length * Vector2f(cos(theta), sin(theta));
     Vector3f bary = baryCoords;
@@ -429,7 +432,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
         edge.normalize();
         top = base->next->next;
         Vector2f newfi = Vector2f(0.f, 0.f);
-        Vector2f newfj = Vector2f(0.f, base->edge->length);
+        Vector2f newfj = Vector2f(base->edge->length, 0.f);
         theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
         Vector2f newfk = top->edge->length * Vector2f(cos(theta), sin(theta));
 
@@ -667,7 +670,9 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::pointQuery(std::sha
     // vector from x to p relative to xy
     std::pair<float, float> rPhi = vectorToPoint(l_xy, l_yz, l_zx, Vector3f(1, 0, 0), Vector3f(0, 1, 0), p);
 
-    return traceFromExtrinsicVertex(x, rPhi.first, rPhi.second);
+    float angle = rPhi.second / x->bigTheta * M_2_PI + xy->angle;
+
+    return traceFromExtrinsicVertex(x, rPhi.first, angle);
 }
 
 
@@ -952,12 +957,18 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
     shared_ptr<ExFace> exFace = _exMesh.getExTriangle(tri->getIndex());
 
     // calculate barycentric coords on exFace
-    Vector3<Vector3f> vertices = tri->getVertices();
-    Vector3f p = getBaryCoords(point, vertices[0], vertices[1], vertices[2]);
+    Vector3f v1 = exFace->halfedge->v->pos;
+    Vector3f v2 = exFace->halfedge->next->v->pos;
+    Vector3f v3 = exFace->halfedge->next->next->v->pos;
+
+    Vector3f p = getBaryCoords(point, v1, v2, v3);
 
     // ignore color and draw outline for points close to exFace edges
-    if (p[0] < 0.05 || p[1] < 0.05 || p[2] < 0.05) {
+    if (p[2] < 0.05) {
         return -1;
+    }
+    else if (p[0] < 0.05 || p[1] < 0.05) {
+        return -2;
     }
 
     // trace to get corresponding intrinsic face
