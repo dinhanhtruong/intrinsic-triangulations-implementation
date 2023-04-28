@@ -221,8 +221,9 @@ void SPmesh::initSignpost() {
 
     cout << "initialized signpost values" << endl;
 
-    flipEdge(*_edges.begin());
-    validate();
+    shared_ptr<InEdge> edge = *_edges.begin();
+    edge = flipEdge(edge);
+//    flipEdge(edge);
 }
 
 
@@ -306,14 +307,14 @@ std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::tr
         // the edge we're on. if you find this not to be true switch the edge and base assignments around based
         // on which minT isn't being chosen
         if (minT == 0) {
-            edge = fi - fk;
-            base = base->next->next->twin;
-        } else if (minT == 1) {
-            edge = fj - fi;
-            base = base->twin;
-        } else if (minT == 2) {
             edge = fk - fj;
             base = base->next->twin;
+        } else if (minT == 1) {
+            edge = fi - fk;
+            base = base->next->next->twin;
+        } else if (minT == 2) {
+            edge = fj - fi;
+            base = base->twin;
         }
         edge.normalize();
         top = base->next->next;
@@ -449,14 +450,14 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
         // the edge we're on. if you find this not to be true switch the edge and base assignments around based
         // on which minT isn't being chosen
         if (minT == 0) {
-            edge = fi - fk;
-            base = base->next->next->twin;
-        } else if (minT == 1) {
-            edge = fj - fi;
-            base = base->twin;
-        } else if (minT == 2) {
             edge = fk - fj;
             base = base->next->twin;
+        } else if (minT == 1) {
+            edge = fi - fk;
+            base = base->next->next->twin;
+        } else if (minT == 2) {
+            edge = fj - fi;
+            base = base->twin;
         }
         edge.normalize();
         top = base->next->next;
@@ -551,7 +552,7 @@ void SPmesh::updateVertex(shared_ptr<InVertex> v_i) {
 
 // algo 5: takes an edge ij with opposite vertices k,l and flips it to be kl
 // replaces triangles ijk, jil with klj,lki
-void SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
+std::shared_ptr<InEdge> SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
     std::shared_ptr<InHalfedge> lj = ij->halfedge->twin->next->next;
     std::shared_ptr<InHalfedge> ki = ij->halfedge->next->next;
     float l_ij = ij->length;
@@ -577,11 +578,7 @@ void SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
 
     // get new length of flipped edge
     float l_kl = baseLength(l_ki, l_il, theta);
-    // iterate around created face to find edge kl and assign length
     shared_ptr<InHalfedge> kl = tri_jkl->halfedge->next;
-//    while (!((kl->v == vk || kl->twin->v == vk) && (kl->v == vl || kl->twin->v == vl))) {
-//        kl = kl->next;
-//    }
     kl->edge->length = l_kl;
 
     // update signposts
@@ -589,6 +586,8 @@ void SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
     updateSignpost(lj);
     /// update angle of HE kl using ki
     updateSignpost(ki);
+
+    return kl->edge;
 }
 
 // algo 6: returns the distance between points p and q inside a triangle with the three given edge lengths.
@@ -1058,7 +1057,10 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
     Vector3f p = getBaryCoords(point, v1, v2, v3);
 
     // ignore color and draw outline for points close to exFace edges
-    if (p[2] < 0.05 || p[0] < 0.05 || p[1] < 0.05) {
+    if (p[0] < 0.05 || p[1] < 0.05) {
+        return -2;
+    }
+    else if (p[2] < 0.05) {
         return -1;
     }
 
