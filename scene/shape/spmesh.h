@@ -98,7 +98,7 @@ private:
     ///     (1) pointer to the extrinsic face containing the end point of the trace,
     ///     (2) barycentric coords of the end point
     ///     (3)** (this is the extra one my function needs):
-    ///         direction vector u of the trace in the local 2D coordinate system of the destination EXTRINSIC triangle. First two
+    ///         direction vector u of the trace in the local 2D coordinate system of the destination EXTRINSIC triangle.
     std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle);
     std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> traceVectorExtrinsic(std::shared_ptr<ExHalfedge> base, Eigen::Vector3f baryCoords, float distance, float angle);
     std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> traceFromExtrinsicVertex(std::shared_ptr<ExVertex> v_i, float distance, float angle);

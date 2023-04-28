@@ -237,6 +237,7 @@ void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
     h_ik->angle = h_ij->angle +  (M_2_PI * theta_i_jk)/h_ij->v->bigTheta;
 }
 
+// angle should be the flat intrinsic angle (NOT phi)
 std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
     shared_ptr<ExHalfedge> base;
     Vector3f baryCoords;
@@ -254,6 +255,7 @@ std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::tr
     return traceVectorExtrinsic(base, baryCoords, distance, a);
 }
 
+// the angle argument is the normalized/projected phi angle in the range [0, 2pi]
 std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceVectorExtrinsic(std::shared_ptr<ExHalfedge> base, Eigen::Vector3f baryCoords, float distance, float angle) {
     shared_ptr<ExHalfedge> top = base->next->next;
     Vector2f fi = Vector2f(0.f, 0.f);
@@ -364,14 +366,40 @@ std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::tr
 }
 
 // algo 2: see note in header file
-// the angle argument is the normalized/projected phi angle in the range [0, 2pi]
-std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicVertex(std::shared_ptr<ExVertex> v_i, float distance, float angle) {
+// the angle argument is the normalized/projected phi angle in the range [0, 2pi] relative to the reference dir of v_i
+std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicVertex(std::shared_ptr<ExVertex> v_i, float distance, float traceAngle) {
     shared_ptr<InHalfedge> base = v_i->inVertex->halfedge;
-    while (base->next->next->twin != v_i->inVertex->halfedge && base->next->next->twin->angle < angle) {
-        base = base->next->next->twin;
-    }
-    float a = (angle - base->angle) * v_i->inVertex->bigTheta/M_2_PI;
-    return traceVectorIntrinsic(base, Vector3f(1.f, 0.f, 0.f), distance, a);
+
+    // find the base vector whose source is at b_i and whose intrinsic triangle contains the dir to trace along (defined by the angle argument)
+    // also find the flat/unprojected trace angle relative to base
+    shared_ptr<InHalfedge> right;
+    shared_ptr<InHalfedge> left;
+    // in the general case, loop will terminate when the trace angle is between the phi angles of the left and right halfedges of the curr triangle
+    do {
+        right = base; // right halfedge in perspective of v_i
+        left = right->next->next->twin; // one step ccw
+
+        // edge case: reference DIRECTION (0 degrees) is inside the current triangle => left halfedge's phi < right halfedge's phi due to wrap-around
+        if (left->angle < right->angle) {
+            // target/trace direction is contained in this triangle iff traceAngle <= left XOR > right. Cannot simultaneously satisfy (right < traceAngle <= left) in this case.
+            if (traceAngle > right->angle ||  traceAngle <= left->angle) {
+                break;
+            }
+        }
+
+        // general case: left phi > right phi in the triangle
+        if (traceAngle < right->angle) {
+            // move clockwise to adjacent face
+            base = base->twin->next;
+        } else if (traceAngle >= left->angle) {
+            // move ccw
+            base = base->next->next->twin;
+        }
+    } while (traceAngle < right->angle || traceAngle >=  left->angle);
+
+    // unproject relative angle from [0, 2pi) -> [0, bigTheta)
+    float traceAngleRelativeTheta = angleBetween(traceAngle, base->angle) * (v_i->inVertex->bigTheta/M_2_PI);
+    return traceVectorIntrinsic(base, Vector3f(1.f, 0.f, 0.f), distance, traceAngleRelativeTheta);
 }
 
 
@@ -689,6 +717,12 @@ float SPmesh::getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki) {
     return acos( (pow(l_ij, 2) + pow(l_ki, 2) - pow(l_jk, 2)) / (2*l_ij*l_ki) );
 }
 
+// HELPER: returns the angle between two 3-vectors in [0, pi]
+float SPmesh::getAngle(Vector3f u, Vector3f v) {
+    return acos(u.normalized().dot(v.normalized()));
+}
+
+
 // HELPER: returns the third side length of a triangle with side lengths a,b meeting at angle theta (law of cos)
 float SPmesh::baseLength(float a, float b, float theta) {
     return sqrt(a * a + b * b - 2 * a * b * cos(theta));
@@ -701,10 +735,6 @@ float SPmesh::angleBetween(float a, float b) {
     return diff;
 }
 
-// HELPER: returns the angle between two 3-vectors in [0, pi]
-float SPmesh::getAngle(Vector3f u, Vector3f v) {
-    return acos(u.normalized().dot(v.normalized()));
-}
 
 // HELPER: returns the ccw angle FROM vector u TO vector v in the range [0, 2*pi).
 //Imagine fixing u as the x-axis in R^2 and going ccw to find v.
