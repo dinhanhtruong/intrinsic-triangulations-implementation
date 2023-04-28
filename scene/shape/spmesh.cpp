@@ -466,12 +466,22 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
         Vector2f newfk = top->edge->length * Vector2f(cos(theta), sin(theta));
 
         Vector2f tijk = Vector2f(-edge(1), edge(0));
-        Vector2f tnew = Vector2f(edge(1), -edge(0));
+        Vector2f newEdge = newfj - newfi;
+        newEdge.normalize();
+        Vector2f tnew = Vector2f(-newEdge(1), newEdge(0));
         Vector2f dir2d = Vector2f(dir(0), dir(1));
+        assert (dir(2) == 0.f);
 
-        Vector2f newDir = -((dir2d.dot(edge) * -edge) + (dir2d.dot(tijk) * tnew));
+        Vector2f newDir = -((dir2d.dot(edge) * newEdge) + (dir2d.dot(tijk) * tnew));
         newDir.normalize();
-        Vector2f p = edgeIntersectBary(0) * fi + edgeIntersectBary(1) * fj + edgeIntersectBary(2) * fk;
+        Vector2f p;
+        if (edgeIntersectBary(0) == 0.f) {
+            p = edgeIntersectBary(1) * newfj + edgeIntersectBary(2) * newfi;
+        } else if (edgeIntersectBary(1) == 0.f) {
+            p = edgeIntersectBary(0) * newfi + edgeIntersectBary(2) * newfj;
+        } else if (edgeIntersectBary(2) == 0.f) {
+            p = edgeIntersectBary(0) * newfj + edgeIntersectBary(1) * newfi;
+        }
 
         fi = newfi;
         fj = newfj;
@@ -492,10 +502,12 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
         t = distance;
         minT = 0;
         for (int i = 0; i < 3; i++) {
-            float ti = -bary(i)/baryDir(i);
-            if (ti >= 0.f && ti < t) {
-                t = ti;
-                minT = i;
+            if (baryDir(i) != 0.f) {
+                float ti = -bary(i)/baryDir(i);
+                if (ti > 0.f && ti < t) {
+                    t = ti;
+                    minT = i;
+                }
             }
         }
 //        cout << "t:" << t << " d:" << distance << endl;
