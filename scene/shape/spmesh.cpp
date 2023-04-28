@@ -51,9 +51,6 @@ void SPmesh::initFromVectors(const vector<Vector3f> &vertices,
 }
 
 void SPmesh::loadHalfEdges() {
-    for (Vector3f& vert: _vertices) {
-        cout << vert.transpose() << endl;
-    }
     cout << "vertices " << _vertices.size() << endl;
     unordered_map<int, shared_ptr<InVertex>> inVerts;
     for (int i = 0; i < _vertices.size(); i++) {
@@ -386,7 +383,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
     float theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
     Vector2f fk = top->edge->length * Vector2f(cos(theta), sin(theta));
     Vector3f bary = baryCoords;
-    Vector3f dir = Vector3f(base->edge->length, atan(angle) * base->edge->length, 0.f);
+    Vector3f dir = Vector3f(base->edge->length, tan(angle) * base->edge->length, 0.f);
     dir.normalize();
     Matrix3f A;
     A << fi(0), fj(0), fk(0),
@@ -983,11 +980,8 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
     Vector3f p = getBaryCoords(point, v1, v2, v3);
 
     // ignore color and draw outline for points close to exFace edges
-    if (p[2] < 0.05) {
+    if (p[2] < 0.05 || p[0] < 0.05 || p[1] < 0.05) {
         return -1;
-    }
-    else if (p[0] < 0.05 || p[1] < 0.05) {
-        return -2;
     }
 
     // trace to get corresponding intrinsic face
