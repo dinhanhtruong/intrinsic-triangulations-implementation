@@ -222,6 +222,7 @@ void SPmesh::initSignpost() {
     cout << "initialized signpost values" << endl;
 
     flipEdge(*_edges.begin());
+    validate();
 }
 
 
@@ -806,6 +807,7 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
     _faces.insert(newFace);
     // construct new edges and their corresponding half-edges on this face if necessary.
     shared_ptr<InHalfedge> newHalfEdge;
+    shared_ptr<InHalfedge> prevHalfEdge;
     auto vertices = vector{v0, v1, v2};
     shared_ptr<InHalfedge> he_0;
     shared_ptr<InHalfedge> he_1;
@@ -850,12 +852,20 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
             case 1: he_1 = newHalfEdge; break;
             case 2: he_2 = newHalfEdge; break;
         }
+        if (i > 0) {
+            prevHalfEdge->next = newHalfEdge;
+        }
+        if (i == 2) {
+            // set next to the initial halfedge
+            he_2->next = he_0;
+        }
+        prevHalfEdge = newHalfEdge;
     }
 
     // set next pointers
-    he_0->next = he_1;
-    he_1->next = he_2;
-    he_2->next = he_0;
+//    he_0->next = he_1;
+//    he_1->next = he_2;
+//    he_2->next = he_0;
 
 
     // set face representative as halfedge whose source is v0 (bary coords = (1,0,0))
@@ -971,6 +981,9 @@ bool isEqual(float a, float b, float epsilon=0.01) {
 
 void SPmesh::validate() {
     for (const shared_ptr<InHalfedge> &halfedge: _halfedges) {
+        if (!halfedge->angle || halfedge->angle < 0) {
+            int test = 1;
+        }
         assert(halfedge->angle >= 0);
         assert(halfedge->angle < 2*M_PI);
 
