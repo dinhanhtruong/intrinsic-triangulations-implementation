@@ -104,7 +104,7 @@ private:
     std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> traceFromExtrinsicVertex(std::shared_ptr<ExVertex> v_i, float distance, float angle);
     std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> traceVectorIntrinsic(std::shared_ptr<InHalfedge> base, Eigen::Vector3f baryCoords, float distance, float angle);
     void updateVertex(std::shared_ptr<InVertex> i);
-    void flipEdge(std::shared_ptr<InEdge> ij);
+    std::shared_ptr<InEdge> flipEdge(std::shared_ptr<InEdge> ij);
     float distance(float l_12, float l_23, float l_31, const Eigen::Vector3f p, const Eigen::Vector3f q);
     void insertVertex(std::shared_ptr<InFace> face, Eigen::Vector3f& barycentricCoords);
     std::pair<float, float> vectorToPoint(float l_ij, float l_jk, float l_ki, const Eigen::Vector3f &i, const Eigen::Vector3f &j, const Eigen::Vector3f &p);
