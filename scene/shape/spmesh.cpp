@@ -220,9 +220,15 @@ void SPmesh::initSignpost() {
     }
 
     cout << "initialized signpost values" << endl;
+    int numFlips = 10;
+    for (int i = 0; i < numFlips; i++) {
+        shared_ptr<InEdge> edge = *_edges.begin();
+        shared_ptr<InEdge> flippedEdge = flipEdge(edge);
+        validate();
+    }
+//    shared_ptr<InEdge> edge = *_edges.begin();
+//    shared_ptr<InEdge> flippedEdge = flipEdge(edge);
 
-    shared_ptr<InEdge> edge = *_edges.begin();
-    edge = flipEdge(edge);
     validate();
 }
 
@@ -615,6 +621,7 @@ std::shared_ptr<InEdge> SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
     /// update angle of HE kl using ki
     updateSignpost(ki);
 
+    cout << "flipped edge" << endl;
     return kl->edge;
 }
 
@@ -647,10 +654,12 @@ void SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f& barycentricCoo
     std::shared_ptr<InVertex> p = make_shared<InVertex>();
     p->exVertex = nullptr; // new intrinsic vertices do not correspond to any extrinsic vertex
     p->barycentricPos = barycentricCoords;
+    p->bigTheta = M_2_PI; // p is inside an intrinsic triangle => no curvature at p => no need to project; same angle sum as if p were in the plane (2pi)
     _verts.insert(p);
 
     // update signpost mesh connectivity
     /// 1) remove the existing intrinsic face
+    _vertPairToEdge.clear(); // clear 1-ring neighborhood cache
     eraseTriangle(face);
     /// 2) insert 3 new intrinsic faces around p and update half edge connectivity (will update signposts afterwards)
     insertTriangle(v_i, v_j, p);
@@ -779,16 +788,40 @@ float SPmesh::argument(Vector2f u, Vector2f v) {
     return angle;
 }
 
+pair<shared_ptr<InVertex>, shared_ptr<InVertex>> getOrderedVertexPair(shared_ptr<InVertex> v0, shared_ptr<InVertex> v1) {
+    return minmax(v0, v1);
+}
+
 // HELPER: removes the given intrinsic triangle.
 // Also removes any incident InEdges that would no longer border two faces after the current removal
 // All of the face's edges and their halfedges are preserved
 void SPmesh::eraseTriangle(shared_ptr<InFace> tri) {
+    // store adjacencies of vertices in the triangle
     shared_ptr<InHalfedge> startHalfEdge = tri->halfedge;
     shared_ptr<InHalfedge> currHalfEdge = startHalfEdge;
     do {
+        // mark v_curr and v_twin as neighbors of each other (may be negated if edge between them gets deleted)
+        // i.e. store shared edge incident to v_curr and v_twin
+        shared_ptr<InEdge> e_curr = currHalfEdge->edge;
+        shared_ptr<InVertex> v_curr = currHalfEdge->v;
+        shared_ptr<InVertex> v_twin = currHalfEdge->twin->v;
+        assert(e_curr && _edges.contains(e_curr));
+        assert(v_curr && _verts.contains(v_curr));
+        assert(v_twin && _verts.contains(v_twin));
+        auto [v0, v1] = getOrderedVertexPair(v_curr, v_twin);
+        _vertPairToEdge[v0][v1] = e_curr;
+        currHalfEdge = currHalfEdge->next;
+    } while(currHalfEdge != startHalfEdge);
+
+
+    // removal: set face pointer of each halfedge to null
+    startHalfEdge = tri->halfedge;
+    currHalfEdge = startHalfEdge;
+    do {
         currHalfEdge->face = nullptr;
+        // if edge is no longer adjacent to any faces
         if (!currHalfEdge->twin->face) {
-            // re-assign representative halfedge of the endpoint vertices v0 and v1, if necessary
+            // 1) re-assign representative halfedge of the endpoint vertices v0 and v1, if necessary
             // the reference direction does not change; all other halfedges' phi angles are unchanged.
             shared_ptr<InHalfedge> currTwin = currHalfEdge->twin;
             shared_ptr<InVertex> v0 = currHalfEdge->v;
@@ -803,11 +836,15 @@ void SPmesh::eraseTriangle(shared_ptr<InFace> tri) {
                 v1->halfedge = currTwin->twin->next;
             }
 
-            // remove curr InEdge entirely since it is no longer adjacent to any faces (e.g. if two adjacent faces are erased, shared edge is also erased on the 2nd call)
+            // 2) the endpoints of the edge to remove will no longer be neighbors
+            shared_ptr<InEdge> currEdge = currHalfEdge->edge;
+            auto [v_a, v_b] = getOrderedVertexPair(v0, v1);
+            _vertPairToEdge[v_a][v_b] = nullptr;
+
+            // 3) remove curr InEdge entirely since it is no longer adjacent to any faces (e.g. if two adjacent faces are erased, shared edge is also erased on the 2nd call)
             _edges.erase(currHalfEdge->edge);
             _halfedges.erase(currHalfEdge);
             _halfedges.erase(currHalfEdge->twin);
-
         }
 
         currHalfEdge = currHalfEdge->next;
@@ -841,7 +878,8 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
     shared_ptr<InHalfedge> he_2;
     for (int i = 0; i < 3; i++) {
         shared_ptr<InVertex> currVertex = vertices[i];
-        shared_ptr<InEdge> edge = getEdge(vertices[i], vertices[(i+1) % 3]); // edge (i, i->next) containing halfedge to be constructed (can be null)
+        shared_ptr<InVertex> nextVertex = vertices[(i+1) % 3];
+        shared_ptr<InEdge> edge = getEdge(currVertex, nextVertex); // edge (i, i->next) containing halfedge to be constructed (can be null)
         if (edge) {
             // grab the halfedge contained in this edge whose source is at currVertex (if it exists)
             shared_ptr<InHalfedge> existingHalfEdge = getHalfEdgeWithSource(edge, currVertex);
@@ -860,7 +898,6 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
         } else {
             newHalfEdge = make_shared<InHalfedge>(InHalfedge{currVertex, nullptr, nullptr, nullptr, nullptr, -1});
 
-
             // TODO: insert into _halfedges or _newHalfedges????
 
             _halfedges.insert(newHalfEdge);
@@ -869,9 +906,10 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
             _edges.insert(edge);
             newHalfEdge->edge = edge;
             newHalfEdge->face = newFace;
+            // mark the endpoints of the new edge as neighbors
+            auto [va, vb] = getOrderedVertexPair(currVertex, nextVertex);
+            _vertPairToEdge[va][vb] = edge;
         }
-
-
 
         // record current half edge for setting next pointers later. Set he_i = current halfedge (whose base is at v_i)
         switch(i) {
@@ -879,20 +917,20 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
             case 1: he_1 = newHalfEdge; break;
             case 2: he_2 = newHalfEdge; break;
         }
-        if (i > 0) {
-            prevHalfEdge->next = newHalfEdge;
-        }
-        if (i == 2) {
-            // set next to the initial halfedge
-            he_2->next = he_0;
-        }
-        prevHalfEdge = newHalfEdge;
+//        if (i > 0) {
+//            prevHalfEdge->next = newHalfEdge;
+//        }
+//        if (i == 2) {
+//            // set next to the initial halfedge
+//            he_2->next = he_0;
+//        }
+//        prevHalfEdge = newHalfEdge;
     }
 
     // set next pointers
-//    he_0->next = he_1;
-//    he_1->next = he_2;
-//    he_2->next = he_0;
+    he_0->next = he_1;
+    he_1->next = he_2;
+    he_2->next = he_0;
 
 
     // set face representative as halfedge whose source is v0 (bary coords = (1,0,0))
@@ -902,27 +940,33 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
 
 // HELPER: returns the InEdge containing v0 and v1 as endpoints or nullptr if it doesn't exist
 shared_ptr<InEdge> SPmesh::getEdge(shared_ptr<InVertex> v0, shared_ptr<InVertex> v1) const {
-    // traverse 1-ring neighborhood of v0 and check incident vertices
-    shared_ptr<InHalfedge> currHalfEdge = v0->halfedge;
-    do {
-        // return current half edge if it belongs to edge (v0, v1)
-        if (currHalfEdge->next->v == v1)
-            return currHalfEdge->edge;
-        // advance clockwise
-        currHalfEdge = currHalfEdge->twin->next;
-    } while (currHalfEdge != v0->halfedge);
+    auto [va, vb] = getOrderedVertexPair(v0, v1);
+    // check that the ordered pair (va, vb) exists in the map
+    if (!_vertPairToEdge.contains(va) || !_vertPairToEdge.at(va).contains(vb))
+        return nullptr;
 
-    // do the same for neighborhood of v1 (since edge might only contain one halfedge when this is called)
-    currHalfEdge = v1->halfedge;
-    do {
-        // return current half edge if it belongs to edge (v0, v1)
-        if (currHalfEdge->next->v == v0)
-            return currHalfEdge->edge;
-        // advance clockwise
-        currHalfEdge = currHalfEdge->twin->next;
-    } while (currHalfEdge != v1->halfedge);
+    return _vertPairToEdge.at(va).at(vb);
+//    // traverse 1-ring neighborhood of v0 and check incident vertices
+//    shared_ptr<InHalfedge> currHalfEdge = v0->halfedge;
+//    do {
+//        // return current half edge if it belongs to edge (v0, v1)
+//        if (currHalfEdge->next->v == v1)
+//            return currHalfEdge->edge;
+//        // advance clockwise
+//        currHalfEdge = currHalfEdge->twin->next;
+//    } while (currHalfEdge != v0->halfedge);
 
-    return nullptr;
+//    // do the same for neighborhood of v1 (since edge might only contain one halfedge when this is called)
+//    currHalfEdge = v1->halfedge;
+//    do {
+//        // return current half edge if it belongs to edge (v0, v1)
+//        if (currHalfEdge->next->v == v0)
+//            return currHalfEdge->edge;
+//        // advance clockwise
+//        currHalfEdge = currHalfEdge->twin->next;
+//    } while (currHalfEdge != v1->halfedge);
+
+//    return nullptr;
 }
 
 int SPmesh::getDegree(const shared_ptr<InVertex> &v) {

@@ -118,6 +118,12 @@ private:
     std::unordered_set<std::shared_ptr<InEdge>> _edges;
     std::unordered_set<std::shared_ptr<InHalfedge>> _halfedges;
     std::unordered_set<std::shared_ptr<InFace>> _faces;
+    // cache (partial) 1-ring neighborhood during erase/insertTriangles to determine edge existence without re-traversal
+    // map from ordered vertex pairs (i,j) where i <= j to the InEdge connecting vertex i and j, if one exists.
+    std::unordered_map<
+        std::shared_ptr<InVertex>,
+        std::unordered_map<std::shared_ptr<InVertex>, std::shared_ptr<InEdge>>
+    > _vertPairToEdge;
 
     std::unordered_set<std::shared_ptr<InVertex>> _newVerts;
     std::unordered_set<std::shared_ptr<InEdge>> _newEdges;
