@@ -53,6 +53,7 @@ public:
     void loadHalfEdges();
     void initSignpost();
     void validate();
+    void validateSignpost();
 
     // algo 11
     std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> pointQuery(std::shared_ptr<ExFace> xyz, Eigen::Vector3f& p);
@@ -70,7 +71,7 @@ private:
 
     /// signpost algos & helpers
     // old code
-//    int getDegree(const std::shared_ptr<InVertex> &v);
+    int getDegree(const std::shared_ptr<InVertex> &v);
 //    Eigen::Vector3f getNormal(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
 //    float getArea(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
 

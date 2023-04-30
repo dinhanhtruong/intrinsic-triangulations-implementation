@@ -223,7 +223,7 @@ void SPmesh::initSignpost() {
 
     shared_ptr<InEdge> edge = *_edges.begin();
     edge = flipEdge(edge);
-//    flipEdge(edge);
+    validate();
 }
 
 
@@ -575,7 +575,12 @@ void SPmesh::updateVertex(shared_ptr<InVertex> v_i) {
 
 // algo 5: takes an edge ij with opposite vertices k,l and flips it to be kl
 // replaces triangles ijk, jil with klj,lki
+// returns a nullptr if the edge is not flippable due to insufficient vertex degree
 std::shared_ptr<InEdge> SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
+    if (getDegree(ij->halfedge->v) < 2 || getDegree(ij->halfedge->twin->v) < 2) {
+        cout << "cannot flip: endpoint has degree < 2" << endl;
+        return nullptr;
+    }
     std::shared_ptr<InHalfedge> lj = ij->halfedge->twin->next->next;
     std::shared_ptr<InHalfedge> ki = ij->halfedge->next->next;
     float l_ij = ij->length;
@@ -920,15 +925,15 @@ shared_ptr<InEdge> SPmesh::getEdge(shared_ptr<InVertex> v0, shared_ptr<InVertex>
     return nullptr;
 }
 
-//int SPmesh::getDegree(const shared_ptr<InVertex> &v) {
-//    int i = 1;
-//    shared_ptr<InHalfedge> curr = v->halfedge->twin->next;
-//    while (curr != v->halfedge) {
-//        curr = curr->twin->next;
-//        i += 1;
-//    }
-//    return i;
-//}
+int SPmesh::getDegree(const shared_ptr<InVertex> &v) {
+    int i = 0;
+    shared_ptr<InHalfedge> curr = v->halfedge;
+    do {
+        curr = curr->twin->next;
+        i += 1;
+    } while (curr != v->halfedge);
+    return i;
+}
 
 //Vector3f SPmesh::getNormal(Vector3f &v1, Vector3f &v2, Vector3f &v3) {
 //    Vector3f ab = v3 - v1;
@@ -957,6 +962,7 @@ void SPmesh::checkTwin(const shared_ptr<InHalfedge> &halfedge) {
 
 void SPmesh::checkFaces() {
     for (const shared_ptr<InFace> &face: _faces) {
+        assert(_halfedges.contains(face->halfedge));
         assert(face->halfedge->face == face);
         assert(face->halfedge->next->face == face);
         assert(face->halfedge->next->next->face == face);
@@ -971,6 +977,7 @@ void SPmesh::checkFaces() {
 
 void SPmesh::checkVertices() {
     for (const shared_ptr<InVertex> &v: _verts) {
+        assert(getDegree(v) >= 2);
         shared_ptr<InHalfedge> curr = v->halfedge->twin->next;
         while (curr != v->halfedge) {
             assert(curr->v == v);
@@ -986,34 +993,42 @@ bool isEqual(float a, float b, float epsilon=0.01) {
     return abs(a-b) < epsilon;
 }
 
-//void SPmesh::validateSignpost() {
-//    for (const shared_ptr<InHalfedge> &halfedge: _halfedges) {
-//        // strictly positive edge lengths
-//       assert(halfedge->edge->length > 0);
+void SPmesh::validateSignpost() {
+    for (const shared_ptr<InHalfedge> &halfedge: _halfedges) {
+        assert(halfedge->angle >= 0);
+        assert(halfedge->angle < 2*M_PI);
+        // strictly positive edge lengths
+        assert(halfedge->edge->length > 0);
 
-//    }
-//    for (const shared_ptr<InFace> &face: face) {
-//        // edges satisfy triangle inequality
+    }
+    for (const shared_ptr<InFace> &face: _faces) {
+        // edges satisfy triangle inequalities
+        float l_ij = face->halfedge->edge->length;
+        float l_jk = face->halfedge->next->edge->length;
+        float l_ki = face->halfedge->next->next->edge->length;
+        assert(l_ij + l_jk >= l_ki);
+        assert(l_jk + l_ki >= l_ij);
+        assert(l_ki + l_ij >= l_jk);
+//        // flat (unprojected) angles sum to 180 degrees (up to float error)
+//        theta_i =
+    }
 
-//        // angles sum to 180 degree (up to float error)
-//        shared_ptr<>
-//    }
-
-//}
+}
 
 void SPmesh::validate() {
     for (const shared_ptr<InHalfedge> &halfedge: _halfedges) {
-        if (!halfedge->angle || halfedge->angle < 0) {
-            int test = 1;
-        }
-        assert(halfedge->angle >= 0);
-        assert(halfedge->angle < 2*M_PI);
-
         checkCircular(halfedge);
         checkTwin(halfedge);
+        assert(_verts.contains(halfedge->v));
+        assert(_faces.contains(halfedge->face));
+    }
+    for (const shared_ptr<InEdge> &edge: _edges) {
+        assert(edge->halfedge); // non-null representative halfedge
+        assert(_halfedges.contains(edge->halfedge));
     }
     checkFaces();
     checkVertices();
+    validateSignpost(); // signpost-specific assertions
 }
 
 
