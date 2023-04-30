@@ -220,7 +220,7 @@ void SPmesh::initSignpost() {
     }
 
     cout << "initialized signpost values" << endl;
-    int numFlips = 10;
+    int numFlips = 30;
     for (int i = 0; i < numFlips; i++) {
         shared_ptr<InEdge> edge = *_edges.begin();
         shared_ptr<InEdge> flippedEdge = flipEdge(edge);
@@ -604,6 +604,7 @@ std::shared_ptr<InEdge> SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
 
     // update signpost mesh connectivity
     /// 1) remove the existing 2 intrinsic faces adjacent to edge
+    _vertPairToEdge.clear();
     eraseTriangle(ij->halfedge->face);
     eraseTriangle(ij->halfedge->twin->face);
     /// 2) insert 2 new intrinsic faces adjacent to flipped edge
