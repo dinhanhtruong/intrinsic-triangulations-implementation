@@ -224,7 +224,7 @@ void SPmesh::initSignpost() {
     validate();
 
 
-    int numFlips = 8;
+    int numFlips = 0;
     for (int i = 0; i < numFlips; i++) {
         shared_ptr<InEdge> flippedEdge = nullptr;
         auto itr = _edges.begin();
@@ -416,7 +416,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
         // edge case: reference DIRECTION (0 degrees) is inside the current triangle => left halfedge's phi < right halfedge's phi due to wrap-around
         if (left->angle < right->angle) {
             // target/trace direction is contained in this triangle iff traceAngle <= left XOR > right. Cannot simultaneously satisfy (right < traceAngle <= left) in this case.
-            if (traceAngle > right->angle ||  traceAngle <= left->angle) {
+            if (traceAngle >= right->angle ||  traceAngle < left->angle) {
                 break;
             }
         }
@@ -433,35 +433,50 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
 
     // unproject relative angle from [0, 2pi) -> [0, bigTheta)
     float traceAngleRelativeTheta = angleBetween(traceAngle, base->angle) * (v_i->inVertex->bigTheta/(2*M_PI));
+    assert(traceAngleRelativeTheta >= 0);
     return traceVectorIntrinsic(base, Vector3f(1.f, 0.f, 0.f), distance, traceAngleRelativeTheta);
 }
 
 
-// angle should be the flat intrinsic angle (NOT phi)
-std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsic(std::shared_ptr<InHalfedge> base, Eigen::Vector3f baryCoords, float distance, float angle) {
+// angle should be the flat intrinsic angle (NOT phi) between base and the desired trace direction
+std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsic(std::shared_ptr<InHalfedge> base, Eigen::Vector3f baryCoords, float distance, float traceAngleRelativeTheta) {
     shared_ptr<InHalfedge> top = base->next->next;
     Vector2f fi = Vector2f(0.f, 0.f);
     Vector2f fj = Vector2f(base->edge->length, 0.f);
-    float theta = (top->twin->angle - base->angle) * base->v->bigTheta/(2*M_PI);
-    Vector2f fk = top->edge->length * Vector2f(cos(theta), sin(theta));
+    // compute interior flat/unprojected angle at vertex i: see fig 13 left of tutorial
+    float theta_i = angleBetween(top->twin->angle, base->angle) * base->v->bigTheta/(2*M_PI);
+    Vector2f fk = top->edge->length * Vector2f(cos(theta_i), sin(theta_i));
     Vector3f bary = baryCoords;
-    Vector3f dir = Vector3f(base->edge->length, tan(angle) * base->edge->length, 0.f);
+    assert(base->edge->length > 0);
+    assert(theta_i >= 0 && theta_i < M_PI);
+    assert(traceAngleRelativeTheta <= theta_i);
+    // get the trace direction vector in 2D homogeneous local coords
+    Vector3f dir;
+    if (traceAngleRelativeTheta > M_PI_2) {
+        // trace angle is in 2nd quadrant: reflect u about vertical axis of 2D local coordinate system so that trace angle lives in 1st quadrant for tan computation
+        dir = Vector3f(-base->edge->length, tan(M_PI - traceAngleRelativeTheta) * base->edge->length, 0.f);
+    } else {
+        dir = Vector3f(base->edge->length, tan(traceAngleRelativeTheta) * base->edge->length, 0.f);
+    }
     dir.normalize();
+
+    // compute transformation from bary coords to local 2D (homogeneous) and its inverse
     Matrix3f A;
     A << fi(0), fj(0), fk(0),
          fi(1), fj(1), fk(1),
          1.f, 1.f, 1.f;
     bool invertible = false;
-    Matrix3f inverse;
+    Matrix3f inverse; // 2D hom to bary
     A.computeInverseWithCheck(inverse, invertible);
     assert(invertible);
     Vector3f baryDir = inverse * dir;
 
+    // find ray-edge intersection with triangle edges within distance (if any)
     float t = distance;
-    int minT = 0;
+    int minT = 0; // for triangle ijk: minT=0 => closest/intersected edge is jk, minT=1 => ki closest, minT=2 => ij closest
     for (int i = 0; i < 3; i++) {
-        if (baryDir(i) != 0.f) {
-            float ti = -bary(i)/baryDir(i);
+        if (baryDir(i) != 0.f) { // else direction is parallel to curr edge => no intersection
+            float ti = -bary(i)/baryDir(i); // see pg 27 of tutorial
             if (ti > 0.f && ti < t) {
                 t = ti;
                 minT = i;
@@ -471,6 +486,9 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
 //    cout << "t:" << t << " d:" << distance << endl;
 //    cout << minT << endl;
 
+    Vector2f newDir = -Vector2f::Ones(); // for easy debugging
+    Vector2f p = -Vector2f::Ones();
+    // move to neighboring triangle and repeat trace until the target trace distance is reached
     while (t < distance) {
         Vector3f edgeIntersectBary = bary + t * baryDir;
         Vector2f edge;
@@ -493,8 +511,8 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
         top = base->next->next;
         Vector2f newfi = Vector2f(0.f, 0.f);
         Vector2f newfj = Vector2f(base->edge->length, 0.f);
-        theta = (top->twin->angle - base->angle) * base->v->bigTheta/(2*M_PI);
-        Vector2f newfk = top->edge->length * Vector2f(cos(theta), sin(theta));
+        theta_i = (top->twin->angle - base->angle) * base->v->bigTheta/(2*M_PI);
+        Vector2f newfk = top->edge->length * Vector2f(cos(theta_i), sin(theta_i));
 
         Vector2f tijk = Vector2f(-edge(1), edge(0));
         Vector2f newEdge = newfj - newfi;
@@ -503,14 +521,13 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
         Vector2f dir2d = Vector2f(dir(0), dir(1));
         assert (dir(2) == 0.f);
 
-        Vector2f newDir = -((dir2d.dot(edge) * newEdge) + (dir2d.dot(tijk) * tnew));
+        newDir = -((dir2d.dot(edge) * newEdge) + (dir2d.dot(tijk) * tnew));
         newDir.normalize();
-        Vector2f p;
-        if (edgeIntersectBary(0) == 0.f) {
+        if (isEqual(edgeIntersectBary(0), 0)) {
             p = edgeIntersectBary(1) * newfj + edgeIntersectBary(2) * newfi;
-        } else if (edgeIntersectBary(1) == 0.f) {
+        } else if (isEqual(edgeIntersectBary(1), 0)) {
             p = edgeIntersectBary(0) * newfi + edgeIntersectBary(2) * newfj;
-        } else if (edgeIntersectBary(2) == 0.f) {
+        } else if (isEqual(edgeIntersectBary(2), 0)) {
             p = edgeIntersectBary(0) * newfj + edgeIntersectBary(1) * newfi;
         }
 
@@ -530,6 +547,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
         bary = inverse * Vector3f(p(0), p(1), 1.f);
         baryDir = inverse * dir;
 
+        // intersect with triangle edges again
         t = distance;
         minT = 0;
         for (int i = 0; i < 3; i++) {
@@ -545,11 +563,18 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
     }
 
     Vector3f newPointBary = bary + t * baryDir;
+    // convert to barycentric coords wrt orientation of the face defined by its representative halfedge
     if (base->next == base->face->halfedge) {
         newPointBary = Vector3f(newPointBary(1), newPointBary(2), newPointBary(0));
     } else if (base->next->next == base->face->halfedge) {
         newPointBary = Vector3f(newPointBary(2), newPointBary(0), newPointBary(1));
     }
+
+
+    // sanity check: barycentric coords must be positive and sum to 1
+    assert(newPointBary[0] >= 0 && newPointBary[1] >= 0 && newPointBary[2] >= 0);
+    float barySum = newPointBary[0] + newPointBary[1] + newPointBary[2];
+    assert(isEqual(barySum, 1));
 
     return make_tuple(base->face, newPointBary);
 }
@@ -704,6 +729,7 @@ std::pair<float, float> SPmesh::vectorToPoint(float l_ij, float l_jk, float l_ki
     float r_pi = distance(l_ij, l_jk, l_ki, i, p); // distance from p to i
     float r_jp = distance(l_ij, l_jk, l_ki, j, p); // distance from j to p
     float phi_ip = getAngleFromEdgeLengths(l_ij, r_jp, r_pi); // angle from ij to ip
+    assert(!isnan(phi_ip));
     return std::make_pair(r_pi, phi_ip);
 }
 
@@ -771,7 +797,10 @@ Vector3f SPmesh::getVPos(shared_ptr<InVertex> v) {
 // HELPER: for a triangle with edge lengths l_ij, l_jk, l_ki, returns the interior angle at vertex i
 float SPmesh::getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki) {
     // see fig. 9 of paper
-    return acos( (pow(l_ij, 2) + pow(l_ki, 2) - pow(l_jk, 2)) / (2*l_ij*l_ki) );
+    double cosTheta = (pow(l_ij, 2) + pow(l_ki, 2) - pow(l_jk, 2)) / (2*l_ij*l_ki);
+    cosTheta = std::clamp(cosTheta, -1., 1.);
+    assert(-1 <= cosTheta && cosTheta <=1);
+    return acos( cosTheta );
 }
 
 // HELPER: returns the angle between two 3-vectors in [0, pi]
@@ -1015,6 +1044,8 @@ void SPmesh::checkTwin(const shared_ptr<InHalfedge> &halfedge) {
 void SPmesh::checkFaces() {
     for (const shared_ptr<InFace> &face: _faces) {
         assert(_halfedges.contains(face->halfedge));
+        assert(_halfedges.contains(face->halfedge->next));
+        assert(_halfedges.contains(face->halfedge->next->next));
         assert(face->halfedge->face == face);
         assert(face->halfedge->next->face == face);
         assert(face->halfedge->next->next->face == face);
@@ -1041,7 +1072,7 @@ void SPmesh::checkVertices() {
     }
 }
 
-bool isEqual(float a, float b, float epsilon=0.001) {
+bool SPmesh::isEqual(float a, float b, float epsilon) {
     return abs(a-b) < epsilon;
 }
 
@@ -1061,9 +1092,9 @@ void SPmesh::validateSignpost() {
         float l_ij = face->halfedge->edge->length;
         float l_jk = face->halfedge->next->edge->length;
         float l_ki = face->halfedge->next->next->edge->length;
-        assert(l_ij + l_jk >= l_ki);
-        assert(l_jk + l_ki >= l_ij);
-        assert(l_ki + l_ij >= l_jk);
+        assert(l_ij + l_jk > l_ki);
+        assert(l_jk + l_ki > l_ij);
+        assert(l_ki + l_ij > l_jk);
 
 
     }
@@ -1157,6 +1188,7 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
 
     // paint intrinsic edges
     Vector3f intrinsicBary = get<1>(intrinsic);
+//    assert(isEqual(barySum, 1));
     if (intrinsicBary[0] < 0.025 || intrinsicBary[1] < 0.025 || intrinsicBary[2] < 0.025) {
         return -3;
     }
