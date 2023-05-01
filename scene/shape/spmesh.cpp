@@ -224,10 +224,16 @@ void SPmesh::initSignpost() {
     validate();
 
 
-    int numFlips = 4;
+    int numFlips = 8;
     for (int i = 0; i < numFlips; i++) {
-        shared_ptr<InEdge> edge = *_edges.begin();
-        shared_ptr<InEdge> flippedEdge = flipEdge(edge);
+        shared_ptr<InEdge> flippedEdge = nullptr;
+        auto itr = _edges.begin();
+        shared_ptr<InEdge> edge;
+        while (flippedEdge == nullptr) {
+            edge = *itr;
+            flippedEdge = flipEdge(edge);
+            itr++; // skip till find flippable edge
+        }
         validate();
     }
 //    shared_ptr<InEdge> edge = *_edges.begin();
@@ -588,10 +594,14 @@ void SPmesh::updateVertex(shared_ptr<InVertex> v_i) {
 
 // algo 5: takes an edge ij with opposite vertices k,l and flips it to be kl
 // replaces triangles ijk, jil with klj,lki
-// returns a nullptr if the edge is not flippable due to insufficient vertex degree
+// returns a nullptr if the edge is not flippable due to insufficient vertex degree, or if edge is non-delaunay
 std::shared_ptr<InEdge> SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
     if (getDegree(ij->halfedge->v) < 2 || getDegree(ij->halfedge->twin->v) < 2) {
         cout << "cannot flip: endpoint has degree < 2" << endl;
+        return nullptr;
+    }
+    if (!edgeIsDelaunay(ij)) {
+        cout << "cannot flip: edge is not delaunay" << endl;
         return nullptr;
     }
     std::shared_ptr<InHalfedge> lj = ij->halfedge->twin->next->next;
@@ -925,14 +935,6 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
             case 1: he_1 = newHalfEdge; break;
             case 2: he_2 = newHalfEdge; break;
         }
-//        if (i > 0) {
-//            prevHalfEdge->next = newHalfEdge;
-//        }
-//        if (i == 2) {
-//            // set next to the initial halfedge
-//            he_2->next = he_0;
-//        }
-//        prevHalfEdge = newHalfEdge;
     }
 
     // set next pointers
@@ -954,27 +956,6 @@ shared_ptr<InEdge> SPmesh::getEdge(shared_ptr<InVertex> v0, shared_ptr<InVertex>
         return nullptr;
 
     return _vertPairToEdge.at(va).at(vb);
-//    // traverse 1-ring neighborhood of v0 and check incident vertices
-//    shared_ptr<InHalfedge> currHalfEdge = v0->halfedge;
-//    do {
-//        // return current half edge if it belongs to edge (v0, v1)
-//        if (currHalfEdge->next->v == v1)
-//            return currHalfEdge->edge;
-//        // advance clockwise
-//        currHalfEdge = currHalfEdge->twin->next;
-//    } while (currHalfEdge != v0->halfedge);
-
-//    // do the same for neighborhood of v1 (since edge might only contain one halfedge when this is called)
-//    currHalfEdge = v1->halfedge;
-//    do {
-//        // return current half edge if it belongs to edge (v0, v1)
-//        if (currHalfEdge->next->v == v0)
-//            return currHalfEdge->edge;
-//        // advance clockwise
-//        currHalfEdge = currHalfEdge->twin->next;
-//    } while (currHalfEdge != v1->halfedge);
-
-//    return nullptr;
 }
 
 int SPmesh::getDegree(const shared_ptr<InVertex> &v) {
@@ -985,6 +966,25 @@ int SPmesh::getDegree(const shared_ptr<InVertex> &v) {
         i += 1;
     } while (curr != v->halfedge);
     return i;
+}
+
+// returns true if the opposite angles on the adjacent faces of the given edge have sum <= pi. See diagram of equation 4.
+bool SPmesh::edgeIsDelaunay(shared_ptr<InEdge> edge) {
+    shared_ptr<InHalfedge> halfedge = edge->halfedge;
+    shared_ptr<InHalfedge> twin = halfedge->twin;
+    // get side lengths of the face lji incident to the representative halfedge of the given edge
+    float l_ji = edge->length;
+    float l_il = halfedge->next->edge->length;
+    float l_lj = halfedge->next->next->edge->length;
+    // get side lengths of the other face kij
+    float l_ij = l_ji;
+    float l_jk = twin->next->edge->length;
+    float l_ki = twin->next->next->edge->length;
+
+    float theta_l = getAngleFromEdgeLengths(l_lj, l_ji, l_il);
+    float theta_k = getAngleFromEdgeLengths(l_ki, l_ij, l_jk);
+
+    return theta_l + theta_k <= M_PI;
 }
 
 //Vector3f SPmesh::getNormal(Vector3f &v1, Vector3f &v2, Vector3f &v3) {
@@ -1074,6 +1074,8 @@ void SPmesh::validate() {
     for (const shared_ptr<InHalfedge> &halfedge: _halfedges) {
         checkCircular(halfedge);
         checkTwin(halfedge);
+        assert(halfedge->face);
+        assert(_edges.contains(halfedge->edge));
         assert(_verts.contains(halfedge->v));
         assert(_faces.contains(halfedge->face));
     }
@@ -1150,6 +1152,15 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
 
     Vector3f p = getBaryCoords(point, v1, v2, v3);
 
+    // trace to get corresponding intrinsic face
+    tuple<shared_ptr<InFace>, Vector3f> intrinsic = pointQuery(exFace, p);
+
+    // paint intrinsic edges
+    Vector3f intrinsicBary = get<1>(intrinsic);
+    if (intrinsicBary[0] < 0.025 || intrinsicBary[1] < 0.025 || intrinsicBary[2] < 0.025) {
+        return -3;
+    }
+
     // ignore color and draw outline for points close to exFace edges
     if (p[0] < 0.05 || p[1] < 0.05) {
         return -2;
@@ -1158,8 +1169,6 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
         return -1;
     }
 
-    // trace to get corresponding intrinsic face
-    tuple<shared_ptr<InFace>, Vector3f> intrinsic = pointQuery(exFace, p);
     // return color of that face
     return _faceColors[get<0>(intrinsic)];
 }

@@ -122,6 +122,7 @@ Vector3f PathTracer::traceRay(const Ray& r, Scene& scene, bool countEmitted) {
         int color = spmesh->getColor(tri, insct.hit);
         if (color == -1) return Vector3f(0, 0, 0);
         if (color == -2) return Vector3f(0.3, 0.3, 0.3);
+        if (color == -3) return Vector3f(1,1,1); //intrinsic edges
 
         Vector3f diffuseColor = colors[color];
         float kd = 0.5f;
