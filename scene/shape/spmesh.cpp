@@ -13,6 +13,7 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "util/tiny_obj_loader.h"
 
+
 using namespace Eigen;
 using namespace std;
 
@@ -220,7 +221,10 @@ void SPmesh::initSignpost() {
     }
 
     cout << "initialized signpost values" << endl;
-    int numFlips = 30;
+    validate();
+
+
+    int numFlips = 4;
     for (int i = 0; i < numFlips; i++) {
         shared_ptr<InEdge> edge = *_edges.begin();
         shared_ptr<InEdge> flippedEdge = flipEdge(edge);
@@ -244,11 +248,14 @@ void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
     float l_ki = h_ij->next->next->edge->length;
     // update angle (phi) of halfedge ik
     float theta_i_jk = getAngleFromEdgeLengths(l_ij, l_jk, l_ki); // euclidean angle of opposite edge ik relative to ij (i.e. interior angle at vertex i between ij and ik)
-    h_ik->angle = h_ij->angle +  (M_2_PI * theta_i_jk)/h_ij->v->bigTheta;
+    float phi_ik = h_ij->angle +  ((2*M_PI) * theta_i_jk)/h_ij->v->bigTheta; // == phi_ij + offset
+    h_ik->angle = (phi_ik >= 2*M_PI) ? phi_ik - 2*M_PI : phi_ik; // constrain to [0, 2pi)
 }
 
 // angle should be the flat intrinsic angle (NOT phi)
 std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
+    // TODO: convert to new base-finding algo in traceFromExtrinsic
+
     shared_ptr<ExHalfedge> base;
     Vector3f baryCoords;
     if (v_i->exVertex == nullptr) {
@@ -261,7 +268,7 @@ std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::tr
             base = base->next->next->twin;
         }
     }
-    float a = fmod(angle - base->angle, M_2_PI) * v_i->exVertex->bigTheta/M_2_PI;
+    float a = fmod(angle - base->angle, (2*M_PI)) * v_i->exVertex->bigTheta/(2*M_PI);
     return traceVectorExtrinsic(base, baryCoords, distance, a);
 }
 
@@ -270,7 +277,7 @@ std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::tr
     shared_ptr<ExHalfedge> top = base->next->next;
     Vector2f fi = Vector2f(0.f, 0.f);
     Vector2f fj = Vector2f(0.f, base->edge->length);
-    float theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
+    float theta = (top->twin->angle - base->angle) * base->v->bigTheta/(2*M_PI);
     Vector2f fk = top->edge->length * Vector2f(cos(theta), sin(theta));
     Vector3f bary = baryCoords;
     Vector3f dir;
@@ -326,7 +333,7 @@ std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::tr
         top = base->next->next;
         Vector2f newfi = Vector2f(0.f, 0.f);
         Vector2f newfj = Vector2f(base->edge->length, 0.f);
-        theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
+        theta = (top->twin->angle - base->angle) * base->v->bigTheta/(2*M_PI);
         Vector2f newfk = top->edge->length * Vector2f(cos(theta), sin(theta));
 
         Vector2f tijk = Vector2f(-edge(1), edge(0));
@@ -419,7 +426,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
     } while (traceAngle < right->angle || traceAngle >=  left->angle);
 
     // unproject relative angle from [0, 2pi) -> [0, bigTheta)
-    float traceAngleRelativeTheta = angleBetween(traceAngle, base->angle) * (v_i->inVertex->bigTheta/M_2_PI);
+    float traceAngleRelativeTheta = angleBetween(traceAngle, base->angle) * (v_i->inVertex->bigTheta/(2*M_PI));
     return traceVectorIntrinsic(base, Vector3f(1.f, 0.f, 0.f), distance, traceAngleRelativeTheta);
 }
 
@@ -429,7 +436,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
     shared_ptr<InHalfedge> top = base->next->next;
     Vector2f fi = Vector2f(0.f, 0.f);
     Vector2f fj = Vector2f(base->edge->length, 0.f);
-    float theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
+    float theta = (top->twin->angle - base->angle) * base->v->bigTheta/(2*M_PI);
     Vector2f fk = top->edge->length * Vector2f(cos(theta), sin(theta));
     Vector3f bary = baryCoords;
     Vector3f dir = Vector3f(base->edge->length, tan(angle) * base->edge->length, 0.f);
@@ -480,7 +487,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
         top = base->next->next;
         Vector2f newfi = Vector2f(0.f, 0.f);
         Vector2f newfj = Vector2f(base->edge->length, 0.f);
-        theta = (top->twin->angle - base->angle) * base->v->bigTheta/M_2_PI;
+        theta = (top->twin->angle - base->angle) * base->v->bigTheta/(2*M_PI);
         Vector2f newfk = top->edge->length * Vector2f(cos(theta), sin(theta));
 
         Vector2f tijk = Vector2f(-edge(1), edge(0));
@@ -655,7 +662,7 @@ void SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f& barycentricCoo
     std::shared_ptr<InVertex> p = make_shared<InVertex>();
     p->exVertex = nullptr; // new intrinsic vertices do not correspond to any extrinsic vertex
     p->barycentricPos = barycentricCoords;
-    p->bigTheta = M_2_PI; // p is inside an intrinsic triangle => no curvature at p => no need to project; same angle sum as if p were in the plane (2pi)
+    p->bigTheta = (2*M_PI); // p is inside an intrinsic triangle => no curvature at p => no need to project; same angle sum as if p were in the plane (2pi)
     _verts.insert(p);
 
     // update signpost mesh connectivity
@@ -736,7 +743,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::pointQuery(std::sha
     // vector from x to p relative to xy
     std::pair<float, float> rPhi = vectorToPoint(l_xy, l_yz, l_zx, Vector3f(1, 0, 0), Vector3f(0, 1, 0), p);
 
-    float angle = rPhi.second / x->bigTheta * M_2_PI + xy->angle;
+    float angle = (rPhi.second / x->bigTheta) * (2*M_PI) + xy->angle;
 
     return traceFromExtrinsicVertex(x, rPhi.first, angle);
 }
@@ -771,7 +778,7 @@ float SPmesh::baseLength(float a, float b, float theta) {
 // HELPER: returns smallest unsigned angle between the points on the unit circle given by angles a,b
 float SPmesh::angleBetween(float a, float b) {
     float diff = abs(a - b); // get positive diff
-    if (diff > M_PI) diff = M_2_PI - diff; // smaller angle should be in [0, pi]
+    if (diff > M_PI) diff = (2*M_PI) - diff; // smaller angle should be in [0, pi]
     return diff;
 }
 
@@ -784,7 +791,7 @@ float SPmesh::argument(Vector2f u, Vector2f v) {
     // adapted from  https://stackoverflow.com/questions/40286650/how-to-get-the-anti-clockwise-angle-between-two-2d-vectors
     float angle = atan2(a[0]*b[1] - a[1]*b[0], a[0]*b[0] + a[1]*b[1]);
     if (angle < 0) {
-        angle += M_2_PI;
+        angle += (2*M_PI);
     }
     return angle;
 }
@@ -1034,7 +1041,7 @@ void SPmesh::checkVertices() {
     }
 }
 
-bool isEqual(float a, float b, float epsilon=0.01) {
+bool isEqual(float a, float b, float epsilon=0.001) {
     return abs(a-b) < epsilon;
 }
 
@@ -1044,7 +1051,10 @@ void SPmesh::validateSignpost() {
         assert(halfedge->angle < 2*M_PI);
         // strictly positive edge lengths
         assert(halfedge->edge->length > 0);
-
+        // halfedge and its immediate radial neighbors should not have the same phi angle (or else there's a degenerate triangle).
+            // can be violated by bad edge flips
+        assert(!isEqual(halfedge->angle, halfedge->twin->next->angle));
+        assert(!isEqual(halfedge->angle, halfedge->next->next->twin->angle));
     }
     for (const shared_ptr<InFace> &face: _faces) {
         // edges satisfy triangle inequalities
@@ -1054,8 +1064,8 @@ void SPmesh::validateSignpost() {
         assert(l_ij + l_jk >= l_ki);
         assert(l_jk + l_ki >= l_ij);
         assert(l_ki + l_ij >= l_jk);
-//        // flat (unprojected) angles sum to 180 degrees (up to float error)
-//        theta_i =
+
+
     }
 
 }
@@ -1074,6 +1084,7 @@ void SPmesh::validate() {
     checkFaces();
     checkVertices();
     validateSignpost(); // signpost-specific assertions
+    cout<<"passed validation"<<endl;
 }
 
 
