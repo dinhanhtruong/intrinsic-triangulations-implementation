@@ -452,7 +452,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
     shared_ptr<InHalfedge> top = base->next->next;
     Vector2f fi = Vector2f(0.f, 0.f);
     Vector2f fj = Vector2f(base->edge->length, 0.f);
-    // compute interior flat/unprojected angle at vertex i: see fig 13 left of tutorial
+    // compute interior flat/unprojected angle at vertex i (source of base): see fig 13 left of tutorial
     float theta_i = angleBetween(top->twin->angle, base->angle) * base->v->bigTheta/(2*M_PI);
     Vector2f fk = top->edge->length * Vector2f(cos(theta_i), sin(theta_i));
     Vector3f bary = baryCoords;
@@ -482,7 +482,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
 
     // find ray-edge intersection with triangle edges within distance (if any)
     float t = distance;
-    int minT = 0; // for triangle ijk: minT=0 => closest/intersected edge is jk, minT=1 => ki closest, minT=2 => ij closest
+    int minT = 0; // for triangle whose base is ij: minT=0 => closest/intersected edge is jk, minT=1 => ki closest, minT=2 => ij closest
     for (int i = 0; i < 3; i++) {
         if (baryDir(i) != 0.f) { // else direction is parallel to curr edge => no intersection
             float ti = -bary(i)/baryDir(i); // see pg 27 of tutorial
@@ -498,51 +498,54 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
     Vector2f newDir = -Vector2f::Ones(); // for easy debugging
     Vector2f p = -Vector2f::Ones();
     // move to neighboring triangle and repeat trace until the target trace distance is reached
+    int numEdgesIntersected =0;
     while (t < distance) {
+        numEdgesIntersected++;
         Vector3f edgeIntersectBary = bary + t * baryDir;
-        Vector2f edge;
+        assert(isEqual(edgeIntersectBary[0], 0) || isEqual(edgeIntersectBary[1], 0) || isEqual(edgeIntersectBary[2], 0)); // one of the coords should be 0 since we're on an edge
+        Vector2f intersectedEdge; // 2D local coords
         // I'm not totally sure if this logic here is right. Based on the minT I think these are the edges we are
         // intersecting with but I'm actually not sure. an easy way to debug is to see which minT is being chose
         // technically in this case minT==1 should never be chosen since we will never be intersecting back with
         // the edge we're on. if you find this not to be true switch the edge and base assignments around based
         // on which minT isn't being chosen
+
+        // parallel transport direction vector to next triangle: see pg 27 of tutorial
         if (minT == 0) {
-            edge = fk - fj;
-            base = base->next->twin;
+            intersectedEdge = fk - fj; // 2D local coords of edge relative to current base (treat source of base as origin)
+            base = base->next->twin; // base on next triangle (across the intersected edge)
         } else if (minT == 1) {
-            edge = fi - fk;
+            intersectedEdge = fi - fk;
             base = base->next->next->twin;
         } else if (minT == 2) {
-            edge = fj - fi;
+            intersectedEdge = fj - fi;
             base = base->twin;
         }
-        edge.normalize();
+        intersectedEdge.normalize();
+        // get new 2D local coords of the new triangle vertices relative to the new base
         top = base->next->next;
-        Vector2f newfi = Vector2f(0.f, 0.f);
-        Vector2f newfj = Vector2f(base->edge->length, 0.f);
-        theta_i = (top->twin->angle - base->angle) * base->v->bigTheta/(2*M_PI);
-        Vector2f newfk = top->edge->length * Vector2f(cos(theta_i), sin(theta_i));
+        fi = Vector2f(0.f, 0.f);
+        fj = Vector2f(base->edge->length, 0.f);
+        theta_i = angleBetween(top->twin->angle, base->angle) * base->v->bigTheta/(2*M_PI);
+        fk = top->edge->length * Vector2f(cos(theta_i), sin(theta_i));
 
-        Vector2f tijk = Vector2f(-edge(1), edge(0));
-        Vector2f newEdge = newfj - newfi;
+        Vector2f tijk = Vector2f(-intersectedEdge(1), intersectedEdge(0));
+        Vector2f newEdge = fj - fi; // base edge (where intersection happened)
         newEdge.normalize();
         Vector2f tnew = Vector2f(-newEdge(1), newEdge(0));
         Vector2f dir2d = Vector2f(dir(0), dir(1));
         assert (dir(2) == 0.f);
 
-        newDir = -((dir2d.dot(edge) * newEdge) + (dir2d.dot(tijk) * tnew));
+        newDir = -((dir2d.dot(intersectedEdge) * newEdge) + (dir2d.dot(tijk) * tnew));
         newDir.normalize();
         if (isEqual(edgeIntersectBary(0), 0)) {
-            p = edgeIntersectBary(1) * newfj + edgeIntersectBary(2) * newfi;
+            p = edgeIntersectBary(1) * fj + edgeIntersectBary(2) * fi;
         } else if (isEqual(edgeIntersectBary(1), 0)) {
-            p = edgeIntersectBary(0) * newfi + edgeIntersectBary(2) * newfj;
+            p = edgeIntersectBary(0) * fi + edgeIntersectBary(2) * fj;
         } else if (isEqual(edgeIntersectBary(2), 0)) {
-            p = edgeIntersectBary(0) * newfj + edgeIntersectBary(1) * newfi;
+            p = edgeIntersectBary(0) * fj + edgeIntersectBary(1) * fi;
         }
 
-        fi = newfi;
-        fj = newfj;
-        fk = newfk;
         dir = Vector3f(newDir(0), newDir(1), 0.f);
         distance -= t;
 
@@ -1027,7 +1030,7 @@ bool SPmesh::edgeIsDelaunay(shared_ptr<InEdge> edge) {
     float theta_k = getAngleFromEdgeLengths(l_ki, l_ij, l_jk);
 
 //    return theta_l + theta_k <= M_PI;
-    return theta_l + theta_k < M_PI;
+    return theta_l + theta_k <= M_PI;
 }
 
 //Vector3f SPmesh::getNormal(Vector3f &v1, Vector3f &v2, Vector3f &v3) {
