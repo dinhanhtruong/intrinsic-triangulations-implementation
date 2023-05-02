@@ -224,7 +224,7 @@ void SPmesh::initSignpost() {
     validate();
 
 
-    int numFlips = 60;
+    int numFlips = 100;
     for (int i = 0; i < numFlips; i++) {
         auto itr = _edges.begin();
         shared_ptr<InEdge> edgeToFlip = *itr;
@@ -450,15 +450,21 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
 // angle should be the flat intrinsic angle (NOT phi) between base and the desired trace direction
 std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsic(std::shared_ptr<InHalfedge> base, Eigen::Vector3f baryCoords, float distance, float traceAngleRelativeTheta) {
     shared_ptr<InHalfedge> top = base->next->next;
+    assert(base->edge->length > 0);
     Vector2f fi = Vector2f(0.f, 0.f);
     Vector2f fj = Vector2f(base->edge->length, 0.f);
     // compute interior flat/unprojected angle at vertex i (source of base): see fig 13 left of tutorial
     float theta_i = angleBetween(top->twin->angle, base->angle) * base->v->bigTheta/(2*M_PI);
     Vector2f fk = top->edge->length * Vector2f(cos(theta_i), sin(theta_i));
     Vector3f bary = baryCoords;
-    assert(base->edge->length > 0);
-    assert(theta_i >= 0 && theta_i < M_PI);
+
+    if (traceAngleRelativeTheta > theta_i) {
+        // this is only reached due to numerical imprecision: reflect the trace angle about base to guarantee that the trace path is in the triangle
+        // or else you get negative bary coords
+        traceAngleRelativeTheta -= abs(traceAngleRelativeTheta - theta_i) + 0.00001;
+    }
     assert(traceAngleRelativeTheta <= theta_i);
+    assert(theta_i >= 0 && theta_i < M_PI);
     // get the trace direction vector in 2D homogeneous local coords
     Vector3f dir;
     if (traceAngleRelativeTheta > M_PI_2) {
@@ -504,11 +510,6 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceVectorIntrinsi
         Vector3f edgeIntersectBary = bary + t * baryDir;
         assert(isEqual(edgeIntersectBary[0], 0) || isEqual(edgeIntersectBary[1], 0) || isEqual(edgeIntersectBary[2], 0)); // one of the coords should be 0 since we're on an edge
         Vector2f intersectedEdge; // 2D local coords
-        // I'm not totally sure if this logic here is right. Based on the minT I think these are the edges we are
-        // intersecting with but I'm actually not sure. an easy way to debug is to see which minT is being chose
-        // technically in this case minT==1 should never be chosen since we will never be intersecting back with
-        // the edge we're on. if you find this not to be true switch the edge and base assignments around based
-        // on which minT isn't being chosen
 
         // parallel transport direction vector to next triangle: see pg 27 of tutorial
         if (minT == 0) {
@@ -1210,18 +1211,21 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
     // paint intrinsic edges
     Vector3f intrinsicBary = get<1>(intrinsic);
 //    assert(isEqual(barySum, 1));
-    if (intrinsicBary[0] < 0.025 || intrinsicBary[1] < 0.025 || intrinsicBary[2] < 0.025) {
-        return -3;
-    }
 
     // ignore color and draw outline for points close to exFace edges
-    if (p[0] < 0.05 || p[1] < 0.05) {
+    if (p[0] < 0.03 || p[1] < 0.03) {
 //        return -2;
         return -1;
     }
-    else if (p[2] < 0.05) {
+    else if (p[2] < 0.03) {
         return -1;
     }
+
+    // draw intrinsic edges white
+    if (intrinsicBary[0] < 0.020 || intrinsicBary[1] < 0.020 || intrinsicBary[2] < 0.020) {
+        return -3;
+    }
+
 
     // return color of that face
     return _faceColors[get<0>(intrinsic)];
