@@ -224,16 +224,20 @@ void SPmesh::initSignpost() {
     validate();
 
 
-    int numFlips = 0;
+    int numFlips = 60;
     for (int i = 0; i < numFlips; i++) {
-        shared_ptr<InEdge> flippedEdge = nullptr;
         auto itr = _edges.begin();
-        shared_ptr<InEdge> edge;
-        while (flippedEdge == nullptr) {
-            edge = *itr;
-            flippedEdge = flipEdge(edge);
+        shared_ptr<InEdge> edgeToFlip = *itr;
+        while (edgeIsDelaunay(edgeToFlip)) {
             itr++; // skip till find flippable edge
+            if (itr == _edges.end()) {
+                edgeToFlip = nullptr;
+                break;
+            }
+            edgeToFlip = *itr;
         }
+        if (edgeToFlip)
+            shared_ptr<InEdge> flippedEdge = flipEdge(edgeToFlip);
         validate();
     }
 //    shared_ptr<InEdge> edge = *_edges.begin();
@@ -254,7 +258,11 @@ void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
     float l_ki = h_ij->next->next->edge->length;
     // update angle (phi) of halfedge ik
     float theta_i_jk = getAngleFromEdgeLengths(l_ij, l_jk, l_ki); // euclidean angle of opposite edge ik relative to ij (i.e. interior angle at vertex i between ij and ik)
+    assert(theta_i_jk < M_PI); // else triangle angles sum to >= pi
     float phi_ik = h_ij->angle +  ((2*M_PI) * theta_i_jk)/h_ij->v->bigTheta; // == phi_ij + offset
+    assert(h_ij->angle >= 0);
+    assert(((2*M_PI) * theta_i_jk)/h_ij->v->bigTheta  > 0);
+
     h_ik->angle = (phi_ik >= 2*M_PI) ? phi_ik - 2*M_PI : phi_ik; // constrain to [0, 2pi)
 }
 
@@ -409,6 +417,7 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
     shared_ptr<InHalfedge> right;
     shared_ptr<InHalfedge> left;
     // in the general case, loop will terminate when the trace angle is between the phi angles of the left and right halfedges of the curr triangle
+    // i.e. when right <= trace angle < left
     do {
         right = base; // right halfedge in perspective of v_i
         left = right->next->next->twin; // one step ccw
@@ -621,14 +630,12 @@ void SPmesh::updateVertex(shared_ptr<InVertex> v_i) {
 // replaces triangles ijk, jil with klj,lki
 // returns a nullptr if the edge is not flippable due to insufficient vertex degree, or if edge is non-delaunay
 std::shared_ptr<InEdge> SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
-    if (getDegree(ij->halfedge->v) < 2 || getDegree(ij->halfedge->twin->v) < 2) {
-        cout << "cannot flip: endpoint has degree < 2" << endl;
+    assert(ij);
+    if (getDegree(ij->halfedge->v) < 3 || getDegree(ij->halfedge->twin->v) < 3) {
+        cout << "cannot flip: endpoint has degree < 3" << endl;
         return nullptr;
     }
-    if (!edgeIsDelaunay(ij)) {
-        cout << "cannot flip: edge is not delaunay" << endl;
-        return nullptr;
-    }
+
     std::shared_ptr<InHalfedge> lj = ij->halfedge->twin->next->next;
     std::shared_ptr<InHalfedge> ki = ij->halfedge->next->next;
     float l_ij = ij->length;
@@ -637,6 +644,7 @@ std::shared_ptr<InEdge> SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
     float l_il = ij->halfedge->twin->next->edge->length;
     float l_lj = lj->edge->length;
 
+    // theta_i = total internal angle of vertex i in the diamond (i.e. angle kil)
     float theta = getAngleFromEdgeLengths(l_ij, l_jk, l_ki) + getAngleFromEdgeLengths(l_il, l_lj, l_ij);
 
     std::shared_ptr<InVertex> vi = ij->halfedge->v;
@@ -657,11 +665,14 @@ std::shared_ptr<InEdge> SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
     float l_kl = baseLength(l_ki, l_il, theta);
     shared_ptr<InHalfedge> kl = tri_jkl->halfedge->next;
     kl->edge->length = l_kl;
+    assert(kl->twin->edge->length == l_kl);
 
     // update signposts
     /// update angle of HE lk using lj
+    assert(lj->next->next->twin == tri_ilk->halfedge->next);
     updateSignpost(lj);
     /// update angle of HE kl using ki
+    assert(ki->next->next->twin == kl);
     updateSignpost(ki);
 
     cout << "flipped edge" << endl;
@@ -811,7 +822,9 @@ float SPmesh::getAngle(Vector3f u, Vector3f v) {
 
 // HELPER: returns the third side length of a triangle with side lengths a,b meeting at angle theta (law of cos)
 float SPmesh::baseLength(float a, float b, float theta) {
-    return sqrt(a * a + b * b - 2 * a * b * cos(theta));
+    assert(theta < M_PI);
+    assert(a>0 && b>0);
+    return sqrt(a*a + b*b - 2*a*b*cos(theta));
 }
 
 // HELPER: returns smallest unsigned angle between the points on the unit circle given by angles a,b
@@ -1013,7 +1026,8 @@ bool SPmesh::edgeIsDelaunay(shared_ptr<InEdge> edge) {
     float theta_l = getAngleFromEdgeLengths(l_lj, l_ji, l_il);
     float theta_k = getAngleFromEdgeLengths(l_ki, l_ij, l_jk);
 
-    return theta_l + theta_k <= M_PI;
+//    return theta_l + theta_k <= M_PI;
+    return theta_l + theta_k < M_PI;
 }
 
 //Vector3f SPmesh::getNormal(Vector3f &v1, Vector3f &v2, Vector3f &v3) {
@@ -1086,6 +1100,12 @@ void SPmesh::validateSignpost() {
             // can be violated by bad edge flips
         assert(!isEqual(halfedge->angle, halfedge->twin->next->angle));
         assert(!isEqual(halfedge->angle, halfedge->next->next->twin->angle));
+        // the flat angle between a halfedge and its next radial neighbor should always be <= pi (or else there exists a triangle with interior angle sum > pi)
+        float rightAngle = halfedge->angle;
+        float leftAngle = halfedge->next->next->twin->angle;
+        if (leftAngle < rightAngle)
+            leftAngle += 2*M_PI;
+        assert( abs(leftAngle - rightAngle) * halfedge->v->bigTheta/(2*M_PI)  <= M_PI);
     }
     for (const shared_ptr<InFace> &face: _faces) {
         // edges satisfy triangle inequalities
@@ -1095,8 +1115,6 @@ void SPmesh::validateSignpost() {
         assert(l_ij + l_jk > l_ki);
         assert(l_jk + l_ki > l_ij);
         assert(l_ki + l_ij > l_jk);
-
-
     }
 
 }
@@ -1195,7 +1213,8 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
 
     // ignore color and draw outline for points close to exFace edges
     if (p[0] < 0.05 || p[1] < 0.05) {
-        return -2;
+//        return -2;
+        return -1;
     }
     else if (p[2] < 0.05) {
         return -1;
