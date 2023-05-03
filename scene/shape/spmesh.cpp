@@ -241,8 +241,21 @@ void SPmesh::initSignpost() {
 //        validate();
 //    }
 
-    shared_ptr<InVertex> inserted = insertVertex(*_faces.begin(), Vector3f(1.f / 3, 1.f / 3, 1.f / 3));
-    insertVertex(inserted->halfedge->face, Vector3f(1.f / 3, 1.f / 3, 1.f / 3));
+    unordered_set<shared_ptr<InFace>> insertFaces = _faces;
+    Vector3f p(1.f / 3, 1.f / 3, 1.f / 3);
+    for (shared_ptr<InFace> face: insertFaces) {
+//        insertVertex(face, Vector3f(1.f / 3, 1.f / 3, 1.f / 3));
+            shared_ptr<InVertex> inserted = insertVertex(face, p);
+//            shared_ptr<InFace> face1 = inserted->halfedge->face;
+//            shared_ptr<InFace> face2 = inserted->halfedge->next->next->twin->face;
+//            shared_ptr<InFace> face3 = inserted->halfedge->next->next->twin->next->next->twin->face;
+//            insertVertex(face1, p);
+//            insertVertex(face2, p);
+//            insertVertex(face3, p);
+    }
+    assert(insertFaces.size() * 3 == _faces.size());
+
+
 
     validate();
 }
@@ -633,9 +646,9 @@ shared_ptr<InVertex> SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f
     std::shared_ptr<InVertex> v_j = face->halfedge->next->v;
     std::shared_ptr<InVertex> v_k = face->halfedge->next->next->v;
     // get face's edge lengths
-    float l_ij = v_i->halfedge->edge->length;
-    float l_jk = v_j->halfedge->edge->length;
-    float l_ki = v_k->halfedge->edge->length;
+    float l_ij = face->halfedge->edge->length;
+    float l_jk = face->halfedge->next->edge->length;
+    float l_ki = face->halfedge->next->next->edge->length;
 
     // make new vertex
     std::shared_ptr<InVertex> p = make_shared<InVertex>();
@@ -1053,13 +1066,12 @@ void SPmesh::validateSignpost() {
         float leftAngle = halfedge->next->next->twin->angle;
         if (leftAngle < rightAngle)
             leftAngle += 2*M_PI;
-        assert( abs(leftAngle - rightAngle) * halfedge->v->bigTheta/(2*M_PI)  <= M_PI);
+        assert( angleBetween(leftAngle, rightAngle) * halfedge->v->bigTheta/(2*M_PI)  <= M_PI);
     }
     for (const shared_ptr<InFace> &face: _faces) {
         // edges satisfy triangle inequalities
         checkTriangleInequality(face);
     }
-
 }
 
 void SPmesh::validate() {
@@ -1174,9 +1186,9 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Ve
 
     float OUTLINE = 0.001 * distanceToCamera;
 
-//    if (d_ij < OUTLINE || d_jk < OUTLINE || d_ki < OUTLINE) {
-//        return -1;
-//    }
+    if (d_ij < OUTLINE || d_jk < OUTLINE || d_ki < OUTLINE) {
+        return -1;
+    }
 
     // paint intrinsic edges white
     Vector3f intrinsicBary = get<1>(intrinsic);
