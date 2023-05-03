@@ -224,24 +224,26 @@ void SPmesh::initSignpost() {
     validate();
 
 
-    int numFlips = 100;
-    for (int i = 0; i < numFlips; i++) {
-        auto itr = _edges.begin();
-        shared_ptr<InEdge> edgeToFlip = *itr;
-        while (edgeIsDelaunay(edgeToFlip)) {
-            itr++; // skip till find flippable edge
-            if (itr == _edges.end()) {
-                edgeToFlip = nullptr;
-                break;
-            }
-            edgeToFlip = *itr;
-        }
-        if (edgeToFlip)
-            shared_ptr<InEdge> flippedEdge = flipEdge(edgeToFlip);
-        validate();
-    }
-//    shared_ptr<InEdge> edge = *_edges.begin();
-//    shared_ptr<InEdge> flippedEdge = flipEdge(edge);
+//    int numFlips = 100;
+//    for (int i = 0; i < numFlips; i++) {
+//        auto itr = _edges.begin();
+//        shared_ptr<InEdge> edgeToFlip = *itr;
+//        while (edgeIsDelaunay(edgeToFlip)) {
+//            itr++; // skip till find flippable edge
+//            if (itr == _edges.end()) {
+//                edgeToFlip = nullptr;
+//                break;
+//            }
+//            edgeToFlip = *itr;
+//        }
+//        if (edgeToFlip)
+//            shared_ptr<InEdge> flippedEdge = flipEdge(edgeToFlip);
+//        validate();
+//    }
+
+    shared_ptr<InVertex> inserted = insertVertex(*_faces.begin(), Vector3f(1.f / 3, 1.f / 3, 1.f / 3));
+//    insertVertex(inserted->halfedge->face, Vector3f(1.f / 3, 1.f / 3, 1.f / 3));
+//    shared_ptr<InEdge> edge = flipEdge(inserted->halfedge->next->edge);
 
     validate();
 }
@@ -261,7 +263,7 @@ void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
     assert(theta_i_jk < M_PI); // else triangle angles sum to >= pi
     float phi_ik = h_ij->angle +  ((2*M_PI) * theta_i_jk)/h_ij->v->bigTheta; // == phi_ij + offset
     assert(h_ij->angle >= 0);
-    assert(((2*M_PI) * theta_i_jk)/h_ij->v->bigTheta  > 0);
+    assert(((2*M_PI) * theta_i_jk)/h_ij->v->bigTheta > 0);
 
     h_ik->angle = (phi_ik >= 2*M_PI) ? phi_ik - 2*M_PI : phi_ik; // constrain to [0, 2pi)
 }
@@ -605,7 +607,7 @@ float SPmesh::distance(float l_12, float l_23, float l_31, const Vector3f p, con
 
 // algo 7: inserts a new intrinsic vertex in the given intrinsic face ijk at the position specified using barycentric coords
 // barycentric coords must be positive and sum to 1
-void SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f& barycentricCoords) {
+shared_ptr<InVertex> SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f barycentricCoords) {
     cout << "inserting vertex..." << endl;
     // get face's verts (ccw orientation)
     std::shared_ptr<InVertex> v_i = face->halfedge->v;
@@ -619,7 +621,6 @@ void SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f& barycentricCoo
     // make new vertex
     std::shared_ptr<InVertex> p = make_shared<InVertex>();
     p->exVertex = nullptr; // new intrinsic vertices do not correspond to any extrinsic vertex
-    p->barycentricPos = barycentricCoords;
     p->bigTheta = (2*M_PI); // p is inside an intrinsic triangle => no curvature at p => no need to project; same angle sum as if p were in the plane (2pi)
     _verts.insert(p);
 
@@ -628,22 +629,30 @@ void SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f& barycentricCoo
     _vertPairToEdge.clear(); // clear 1-ring neighborhood cache
     eraseTriangle(face);
     /// 2) insert 3 new intrinsic faces around p and update half edge connectivity (will update signposts afterwards)
-    insertTriangle(v_i, v_j, p);
-    insertTriangle(v_j, v_k, p);
-    insertTriangle(v_k, v_i, p);
-    validate();
+    shared_ptr<InFace> ijp = insertTriangle(v_i, v_j, p);
+    p->halfedge = ijp->halfedge->next->next; // assign halfedge pi to p
+    shared_ptr<InFace> jkp = insertTriangle(v_j, v_k, p);
+    shared_ptr<InFace> kip = insertTriangle(v_k, v_i, p);
 
     // compute and set edge lengths of all new edges incident to new vertex p
     // barycentric coordinates of vertices are: vi = (1,0,0),   vj = (0,1,0),   vk = (0,0,1).
     std::shared_ptr<InEdge> e_ip = p->halfedge->edge;
     e_ip->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(1,0,0)); // distance along intrinsic (flattened) triangle from vi to p
-    std::shared_ptr<InEdge> e_jp = p->halfedge->edge;
+    std::shared_ptr<InEdge> e_jp = p->halfedge->next->next->twin->edge;
     e_jp->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(0,1,0)); // vj to p
-    std::shared_ptr<InEdge> e_kp = p->halfedge->edge;
+    std::shared_ptr<InEdge> e_kp = p->halfedge->next->next->twin->next->next->twin->edge;
     e_kp->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(0,0,1)); // vk to p
+
+    checkTriangleInequality(ijp);
+    checkTriangleInequality(jkp);
+    checkTriangleInequality(kip);
 
     // update signpost angles around p and affected neighbors
     updateVertex(p);
+
+    validate();
+
+    return p;
 }
 
 // algo 9: given barycentric coords p for a point in triangle ijk returns polar coords r,phi of the vector from i to p
@@ -993,13 +1002,21 @@ void SPmesh::checkVertices() {
             curr = curr->twin->next;
         }
         assert(curr == v->halfedge);
-        assert(v->exVertex->inVertex == v);
         assert(v->bigTheta > 0);
     }
 }
 
 bool SPmesh::isEqual(float a, float b, float epsilon) {
     return abs(a-b) < epsilon;
+}
+
+void SPmesh::checkTriangleInequality(const shared_ptr<InFace> face) {
+    float l_ij = face->halfedge->edge->length;
+    float l_jk = face->halfedge->next->edge->length;
+    float l_ki = face->halfedge->next->next->edge->length;
+    assert(l_ij + l_jk > l_ki);
+    assert(l_jk + l_ki > l_ij);
+    assert(l_ki + l_ij > l_jk);
 }
 
 void SPmesh::validateSignpost() {
@@ -1021,12 +1038,7 @@ void SPmesh::validateSignpost() {
     }
     for (const shared_ptr<InFace> &face: _faces) {
         // edges satisfy triangle inequalities
-        float l_ij = face->halfedge->edge->length;
-        float l_jk = face->halfedge->next->edge->length;
-        float l_ki = face->halfedge->next->next->edge->length;
-        assert(l_ij + l_jk > l_ki);
-        assert(l_jk + l_ki > l_ij);
-        assert(l_ki + l_ij > l_jk);
+        checkTriangleInequality(face);
     }
 
 }
@@ -1103,8 +1115,20 @@ Eigen::Vector3f SPmesh::getBaryCoords(Eigen::Vector3f &p, Eigen::Vector3f &v1, E
     return Vector3f(u, v, w);
 }
 
-int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
+// gets distance from p to the edge v1-v2 of triangle with side lengths l_ij, l_jk, l_ki
+// p, v1, v2 are all barycentric coords
+float SPmesh::distanceToEdge(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vector3f &v2, float l_ij, float l_jk, float l_ki) {
+    Vector3f u = p - v1;
+    Vector3f v = v2 - v1;
+    Vector3f projected = v1 + v * (u.dot(v) / v.dot(v));
+    return distance(l_ij, l_jk, l_ki, p, projected);
+}
+
+int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Vector3f &camPos) {
     shared_ptr<ExFace> exFace = _exMesh.getExTriangle(tri->getIndex());
+
+    float distanceToCamera = (camPos - point).norm();
+//    cout << distanceToCamera << endl;
 
     // calculate barycentric coords on exFace
     Vector3f v1 = exFace->halfedge->v->pos;
@@ -1116,25 +1140,42 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point) {
     // trace to get corresponding intrinsic face
     tuple<shared_ptr<InFace>, Vector3f> intrinsic = pointQuery(exFace, p);
 
-    // paint intrinsic edges
+    Vector3f i(1, 0, 0);
+    Vector3f j(0, 1, 0);
+    Vector3f k(0, 0, 1);
+
+    // paint extrinsic edges black
+    float l_ij = exFace->halfedge->edge->length;
+    float l_jk = exFace->halfedge->next->edge->length;
+    float l_ki = exFace->halfedge->next->next->edge->length;
+
+    float d_ij = distanceToEdge(p, i, j, l_ij, l_jk, l_ki);
+    float d_jk = distanceToEdge(p, j, k, l_ij, l_jk, l_ki);
+    float d_ki = distanceToEdge(p, k, i, l_ij, l_jk, l_ki);
+
+    float OUTLINE = 0.001 * distanceToCamera;
+
+//    if (d_ij < OUTLINE || d_jk < OUTLINE || d_ki < OUTLINE) {
+//        return -1;
+//    }
+
+    // paint intrinsic edges white
     Vector3f intrinsicBary = get<1>(intrinsic);
 //    assert(isEqual(barySum, 1));
+    shared_ptr<InFace> inFace = get<0>(intrinsic);
 
-    // ignore color and draw outline for points close to exFace edges
-    if (p[0] < 0.03 || p[1] < 0.03) {
-//        return -2;
-        return -1;
-    }
-    else if (p[2] < 0.03) {
-        return -1;
-    }
+    l_ij = inFace->halfedge->edge->length;
+    l_jk = inFace->halfedge->next->edge->length;
+    l_ki = inFace->halfedge->next->next->edge->length;
 
-    // draw intrinsic edges white
-    if (intrinsicBary[0] < 0.020 || intrinsicBary[1] < 0.020 || intrinsicBary[2] < 0.020) {
+    d_ij = distanceToEdge(intrinsicBary, i, j, l_ij, l_jk, l_ki);
+    d_jk = distanceToEdge(intrinsicBary, j, k, l_ij, l_jk, l_ki);
+    d_ki = distanceToEdge(intrinsicBary, k, i, l_ij, l_jk, l_ki);
+
+    if (d_ij < OUTLINE || d_jk < OUTLINE || d_ki < OUTLINE) {
         return -3;
     }
 
-
     // return color of that face
-    return _faceColors[get<0>(intrinsic)];
+    return _faceColors[inFace];
 }

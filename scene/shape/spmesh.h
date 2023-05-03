@@ -58,7 +58,7 @@ public:
 
     // visualization functions
     void assignColors();
-    int getColor(const Triangle* tri, Eigen::Vector3f point);
+    int getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Vector3f &camPos);
 
 private:
     /// validator helpers
@@ -66,6 +66,7 @@ private:
     void checkTwin(const std::shared_ptr<InHalfedge> &halfedge);
     void checkFaces();
     void checkVertices();
+    void checkTriangleInequality(const std::shared_ptr<InFace> face);
 
     /// signpost algos & helpers
     // old code
@@ -81,6 +82,7 @@ private:
     bool isEqual(float a, float b, float epsilon=0.001);
     float argument(Eigen::Vector2f u, Eigen::Vector2f v);
     Eigen::Vector3f getBaryCoords(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
+    float distanceToEdge(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vector3f &v2, float l_ij, float l_jk, float l_ki);
     Eigen::Vector3f getVPos(std::shared_ptr<InVertex> v);
     std::shared_ptr<InEdge> getEdge(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1) const;
     std::shared_ptr<InHalfedge> getHalfEdgeWithSource(std::shared_ptr<InEdge> edge, std::shared_ptr<InVertex> sourceVertex) const;
@@ -107,7 +109,7 @@ private:
     void updateVertex(std::shared_ptr<InVertex> i);
     std::shared_ptr<InEdge> flipEdge(std::shared_ptr<InEdge> ij);
     float distance(float l_12, float l_23, float l_31, const Eigen::Vector3f p, const Eigen::Vector3f q);
-    void insertVertex(std::shared_ptr<InFace> face, Eigen::Vector3f& barycentricCoords);
+    std::shared_ptr<InVertex> insertVertex(std::shared_ptr<InFace> face, Eigen::Vector3f barycentricCoords);
     std::pair<float, float> vectorToPoint(float l_ij, float l_jk, float l_ki, const Eigen::Vector3f &i, const Eigen::Vector3f &j, const Eigen::Vector3f &p);
     void moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab, const Eigen::Vector3f &p);
 

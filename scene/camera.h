@@ -10,6 +10,7 @@ public:
 
     virtual Eigen::Matrix4f getViewMatrix() const = 0;
     virtual Eigen::Matrix4f getScaleMatrix() const = 0;
+    virtual Eigen::Vector3f getPosition() const = 0;
 };
 
 #endif // CAMERA_H

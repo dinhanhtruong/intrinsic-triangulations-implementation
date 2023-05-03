@@ -36,3 +36,7 @@ Matrix4f BasicCamera::getScaleMatrix() const
     scale(1, 1) = 1 / tanThetaH;
     return scale;
 }
+
+Vector3f BasicCamera::getPosition() const {
+    return m_position;
+}

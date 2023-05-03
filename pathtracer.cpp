@@ -119,7 +119,7 @@ Vector3f PathTracer::traceRay(const Ray& r, Scene& scene, bool countEmitted) {
     if(scene.getIntersection(rayOut, &insct)) {
         const Triangle *tri = static_cast<const Triangle *>(insct.data); // cast intersected obj to tri since handling tri meshes
         SPmesh* spmesh = scene.getSPMesh();
-        int color = spmesh->getColor(tri, insct.hit);
+        int color = spmesh->getColor(tri, insct.hit, scene.getCamera().getPosition());
         if (color == -1) return Vector3f(0, 0, 0);
         if (color == -2) return Vector3f(0.3, 0.3, 0.3);
         if (color == -3) return Vector3f(1,1,1); //intrinsic edges
