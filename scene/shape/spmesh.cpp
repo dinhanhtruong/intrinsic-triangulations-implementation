@@ -267,23 +267,50 @@ void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
 }
 
 // angle should be the flat intrinsic angle (NOT phi)
-std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle) {
+std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float traceAngle) {
     // TODO: convert to new base-finding algo in traceFromExtrinsic
 
     shared_ptr<ExHalfedge> base;
     Vector3f baryCoords;
+    float traceAngleRelativeTheta;
     if (v_i->exVertex == nullptr) {
         baryCoords = v_i->barycentricPos;
         base = v_i->exFace->halfedge;
+        traceAngleRelativeTheta = traceAngle;
     } else {
         baryCoords = Vector3f(1.f, 0.f, 0.f);
         base = v_i->exVertex->halfedge;
-        while (base->next->next->twin != v_i->exVertex->halfedge && base->next->next->twin->angle < angle) {
-            base = base->next->next->twin;
-        }
+        shared_ptr<ExHalfedge> right;
+        shared_ptr<ExHalfedge> left;
+        // in the general case, loop will terminate when the trace angle is between the phi angles of the left and right halfedges of the curr triangle
+        // i.e. when right <= trace angle < left
+        do {
+            right = base; // right halfedge in perspective of v_i
+            left = right->next->next->twin; // one step ccw
+
+            // edge case: reference DIRECTION (0 degrees) is inside the current triangle => left halfedge's phi < right halfedge's phi due to wrap-around
+            if (left->angle < right->angle) {
+                // target/trace direction is contained in this triangle iff traceAngle <= left XOR > right. Cannot simultaneously satisfy (right < traceAngle <= left) in this case.
+                if (traceAngle >= right->angle ||  traceAngle < left->angle) {
+                    break;
+                }
+            }
+
+            // general case: left phi > right phi in the triangle
+            if (traceAngle < right->angle) {
+                // move clockwise to adjacent face
+                base = base->twin->next;
+            } else if (traceAngle >= left->angle) {
+                // move ccw
+                base = base->next->next->twin;
+            }
+        } while (traceAngle < right->angle || traceAngle >=  left->angle);
+
+        // unproject relative angle from [0, 2pi) -> [0, bigTheta)
+        traceAngleRelativeTheta = angleBetween(traceAngle, base->angle) * (v_i->exVertex->bigTheta/(2*M_PI));
+        assert(traceAngleRelativeTheta >= 0);
     }
-    float a = fmod(angle - base->angle, (2*M_PI)) * v_i->exVertex->bigTheta/(2*M_PI);
-    return traceVector<ExFace>(base, baryCoords, distance, a);
+    return traceVector<ExFace>(base, baryCoords, distance, traceAngleRelativeTheta);
 }
 
 // algo 2: see note in header file
@@ -348,9 +375,9 @@ std::tuple<std::shared_ptr<T>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceVe
     assert(theta_i >= 0 && theta_i < M_PI);
     // get the trace direction vector in 2D homogeneous local coords
     Vector3f dir;
-    if (traceAngleRelativeTheta > M_PI_2) {
+    if (traceAngleRelativeTheta > M_PI_2 && traceAngleRelativeTheta < (3.f * M_PI_2)) {
         // trace angle is in 2nd quadrant: reflect u about vertical axis of 2D local coordinate system so that trace angle lives in 1st quadrant for tan computation
-        dir = Vector3f(-base->edge->length, tan(M_PI - traceAngleRelativeTheta) * base->edge->length, 0.f);
+        dir = Vector3f(-base->edge->length, tan(traceAngleRelativeTheta) * -base->edge->length, 0.f);
     } else {
         dir = Vector3f(base->edge->length, tan(traceAngleRelativeTheta) * base->edge->length, 0.f);
     }
