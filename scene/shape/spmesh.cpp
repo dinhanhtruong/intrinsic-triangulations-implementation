@@ -242,8 +242,7 @@ void SPmesh::initSignpost() {
 //    }
 
     shared_ptr<InVertex> inserted = insertVertex(*_faces.begin(), Vector3f(1.f / 3, 1.f / 3, 1.f / 3));
-//    insertVertex(inserted->halfedge->face, Vector3f(1.f / 3, 1.f / 3, 1.f / 3));
-//    shared_ptr<InEdge> edge = flipEdge(inserted->halfedge->next->edge);
+    insertVertex(inserted->halfedge->face, Vector3f(1.f / 3, 1.f / 3, 1.f / 3));
 
     validate();
 }
@@ -637,11 +636,11 @@ shared_ptr<InVertex> SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3f
     // compute and set edge lengths of all new edges incident to new vertex p
     // barycentric coordinates of vertices are: vi = (1,0,0),   vj = (0,1,0),   vk = (0,0,1).
     std::shared_ptr<InEdge> e_ip = p->halfedge->edge;
-    e_ip->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(1,0,0)); // distance along intrinsic (flattened) triangle from vi to p
+    e_ip->length = distance(l_ij, l_jk, l_ki, barycentricCoords, Vector3f(1,0,0)); // distance along intrinsic (flattened) triangle from vi to p
     std::shared_ptr<InEdge> e_jp = p->halfedge->next->next->twin->edge;
-    e_jp->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(0,1,0)); // vj to p
+    e_jp->length = distance(l_ij, l_jk, l_ki, barycentricCoords, Vector3f(0,1,0)); // vj to p
     std::shared_ptr<InEdge> e_kp = p->halfedge->next->next->twin->next->next->twin->edge;
-    e_kp->length = distance(l_ij, l_jk, l_ki, p->barycentricPos, Vector3f(0,0,1)); // vk to p
+    e_kp->length = distance(l_ij, l_jk, l_ki, barycentricCoords, Vector3f(0,0,1)); // vk to p
 
     checkTriangleInequality(ijp);
     checkTriangleInequality(jkp);
