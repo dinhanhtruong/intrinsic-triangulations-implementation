@@ -484,20 +484,40 @@ std::tuple<std::shared_ptr<T>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceVe
     }
 
     Vector3f newPointBary = bary + t * baryDir;
+    Vector3f newDirBary = baryDir;
     // convert to barycentric coords wrt orientation of the face defined by its representative halfedge
-    if (base->next == base->face->halfedge) {
-        newPointBary = Vector3f(newPointBary(1), newPointBary(2), newPointBary(0));
-    } else if (base->next->next == base->face->halfedge) {
-        newPointBary = Vector3f(newPointBary(2), newPointBary(0), newPointBary(1));
+    if (base != base->face->halfedge) {
+        if (base->next == base->face->halfedge) {
+            newPointBary = Vector3f(newPointBary(1), newPointBary(2), newPointBary(0));
+            newDirBary = Vector3f(newDirBary(1), newDirBary(2), newDirBary(0));
+        } else if (base->next->next == base->face->halfedge) {
+            newPointBary = Vector3f(newPointBary(2), newPointBary(0), newPointBary(1));
+            newDirBary = Vector3f(newDirBary(2), newDirBary(0), newDirBary(1));
+        }
+        base = base->face->halfedge;
+        top = base->next->next;
+
+        fi = Vector2f(0.f, 0.f);
+        fj = Vector2f(base->edge->length, 0.f);
+        // compute interior flat/unprojected angle at vertex i (source of base): see fig 13 left of tutorial
+        theta_i = angleBetween(top->twin->angle, base->angle) * base->v->bigTheta/(2*M_PI);
+        fk = top->edge->length * Vector2f(cos(theta_i), sin(theta_i));
+
+        A << fi(0), fj(0), fk(0),
+             fi(1), fj(1), fk(1),
+             1.f, 1.f, 1.f;
     }
 
+    Vector3f newDirLocal = A * newDirBary;
 
     // sanity check: barycentric coords must be positive and sum to 1
     assert(newPointBary[0] >= 0 && newPointBary[1] >= 0 && newPointBary[2] >= 0);
     float barySum = newPointBary[0] + newPointBary[1] + newPointBary[2];
     assert(isEqual(barySum, 1));
+    float dirBarySum = newDirBary[0] + newDirBary[1] + newDirBary[2];
+    assert(isEqual(dirBarySum, 0));
 
-    return make_tuple(base->face, newPointBary, Vector2f(baryDir(0), baryDir(1)));
+    return make_tuple(base->face, newPointBary, Vector2f(newDirLocal(0), newDirLocal(1)));
 }
 
 // algo 3: updates the signpost angles for every edge incident to the given vertex vi.
