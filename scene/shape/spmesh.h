@@ -113,6 +113,9 @@ private:
     std::pair<float, float> vectorToPoint(float l_ij, float l_jk, float l_ki, const Eigen::Vector3f &i, const Eigen::Vector3f &j, const Eigen::Vector3f &p);
     void moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab, const Eigen::Vector3f &p);
 
+    // triangulation
+    void delaunayTriangulation();
+
 
     std::vector<Eigen::Vector3f> _vertices;
     std::vector<Eigen::Vector3i> _facesList;

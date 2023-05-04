@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
+#include <queue>
 
 #include <QFileInfo>
 #include <QString>
@@ -223,50 +224,7 @@ void SPmesh::initSignpost() {
     cout << "initialized signpost values" << endl;
     validate();
 
-
-//    int numFlips = 100;
-//    for (int i = 0; i < numFlips; i++) {
-//        auto itr = _edges.begin();
-//        shared_ptr<InEdge> edgeToFlip = *itr;
-//        while (edgeIsDelaunay(edgeToFlip)) {
-//            itr++; // skip till find flippable edge
-//            if (itr == _edges.end()) {
-//                edgeToFlip = nullptr;
-//                break;
-//            }
-//            edgeToFlip = *itr;
-//        }
-//        if (edgeToFlip)
-//            shared_ptr<InEdge> flippedEdge = flipEdge(edgeToFlip);
-//        validate();
-//    }
-
-
-    unordered_set<shared_ptr<InFace>> insertFaces;
-    for (shared_ptr<InFace> face: _faces) {
-        insertFaces.insert(face);
-    }
-    Vector3f p(1.f / 3, 1.f / 3, 1.f / 3);
-    for (shared_ptr<InFace> face: insertFaces) {
-//        insertVertex(face, Vector3f(1.f / 3, 1.f / 3, 1.f / 3));
-        shared_ptr<InVertex> inserted = insertVertex(face, p);
-//        shared_ptr<InFace> face1 = inserted->halfedge->face;
-//        shared_ptr<InFace> face2 = inserted->halfedge->next->next->twin->face;
-//        shared_ptr<InFace> face3 = inserted->halfedge->next->next->twin->next->next->twin->face;
-//        insertVertex(face1, p);
-//        insertVertex(face2, p);
-//        insertVertex(face3, p);
-    }
-    assert(insertFaces.size() * 3 == _faces.size());
-
-    insertFaces.clear();
-    for (shared_ptr<InFace> face: _faces) {
-        insertFaces.insert(face);
-    }
-    for (shared_ptr<InFace> face: insertFaces) {
-        shared_ptr<InVertex> inserted = insertVertex(face, p);
-    }
-    assert(insertFaces.size() * 3 == _faces.size());
+    delaunayTriangulation();
     validate();
 }
 
@@ -628,7 +586,9 @@ std::shared_ptr<InEdge> SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
     assert(ki->next->next->twin == kl);
     updateSignpost(ki);
 
-    cout << "flipped edge" << endl;
+    validate();
+
+//    cout << "flipped edge" << endl;
     return kl->edge;
 }
 
@@ -960,6 +920,7 @@ shared_ptr<InEdge> SPmesh::getEdge(shared_ptr<InVertex> v0, shared_ptr<InVertex>
     return _vertPairToEdge.at(va).at(vb);
 }
 
+// HELPER: returns vertex degree
 int SPmesh::getDegree(const shared_ptr<InVertex> &v) {
     int i = 0;
     shared_ptr<InHalfedge> curr = v->halfedge;
@@ -970,7 +931,51 @@ int SPmesh::getDegree(const shared_ptr<InVertex> &v) {
     return i;
 }
 
-// returns true if the opposite angles on the adjacent faces of the given edge have sum <= pi. See diagram of equation 4.
+
+//////////////////////////////////////////////
+////////////// TRIANGULATION /////////////////
+//////////////////////////////////////////////
+
+void SPmesh::delaunayTriangulation() {
+    int maxIterations = 3000; // limit if convergence isn't reached
+
+    cout << "beginning delaunay triangulation with a cap of " << maxIterations << " iterations" << endl;
+
+    // enqueue all edges
+    queue<shared_ptr<InEdge>> edgeQ;
+    unordered_set<shared_ptr<InEdge>> edgeSet = _edges;
+    for (shared_ptr<InEdge> edge: _edges) {
+        edgeQ.push(edge);
+    }
+
+    // iterate until queue is empty or hit cap
+    int i = 0;
+    while (!edgeQ.empty() && i < maxIterations) {
+        shared_ptr<InEdge> nextEdge = edgeQ.front();
+        edgeQ.pop();
+        edgeSet.erase(edgeSet.find(nextEdge));
+        if (!edgeIsDelaunay(nextEdge)) {
+            shared_ptr<InEdge> flipped = flipEdge(nextEdge);
+            shared_ptr<InEdge> adjacentEdges[4] = {
+                flipped->halfedge->next->edge,
+                flipped->halfedge->next->next->edge,
+                flipped->halfedge->twin->next->edge,
+                flipped->halfedge->twin->next->next->edge
+            };
+            for (shared_ptr<InEdge> adjacent: adjacentEdges) {
+                if (!edgeSet.contains(adjacent)) {
+                    edgeQ.push(adjacent);
+                    edgeSet.insert(adjacent);
+                }
+            }
+        }
+        i++;
+    }
+
+    cout << "reached delaunay convergence in " << i << " iterations" << endl;
+}
+
+// HELPER: returns true if the opposite angles on the adjacent faces of the given edge have sum <= pi. See diagram of equation 4.
 bool SPmesh::edgeIsDelaunay(shared_ptr<InEdge> edge) {
     shared_ptr<InHalfedge> halfedge = edge->halfedge;
     shared_ptr<InHalfedge> twin = halfedge->twin;
@@ -1097,7 +1102,7 @@ void SPmesh::validate() {
     checkFaces();
     checkVertices();
     validateSignpost(); // signpost-specific assertions
-    cout<<"passed validation"<<endl;
+//    cout<<"passed validation"<<endl;
 }
 
 
@@ -1165,7 +1170,7 @@ float SPmesh::distanceToEdge(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vec
 int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Vector3f &camPos) {
     shared_ptr<ExFace> exFace = _exMesh.getExTriangle(tri->getIndex());
 
-    float distanceToCamera = (camPos - point).norm();
+//    float distanceToCamera = (camPos - point).norm();
 //    cout << distanceToCamera << endl;
 
     // calculate barycentric coords on exFace
@@ -1191,7 +1196,8 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Ve
     float d_jk = distanceToEdge(p, j, k, l_ij, l_jk, l_ki);
     float d_ki = distanceToEdge(p, k, i, l_ij, l_jk, l_ki);
 
-    float OUTLINE = 0.001 * distanceToCamera;
+//    float OUTLINE = 0.001 * distanceToCamera;
+    float OUTLINE = 0.05;
 
     if (d_ij < OUTLINE || d_jk < OUTLINE || d_ki < OUTLINE) {
         return -1;

@@ -126,7 +126,7 @@ Vector3f PathTracer::traceRay(const Ray& r, Scene& scene, bool countEmitted) {
 
         Vector3f diffuseColor = colors[color];
         float kd = 0.5f;
-        float ka = 0.25f;
+        float ka = 0.3f;
 
         Vector3f normal = tri->getNormal(insct.hit); // world space normal at insct point
         Vector3f directionalLight(-1.f, -1.f, -1.f);
