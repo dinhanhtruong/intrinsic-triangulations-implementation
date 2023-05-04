@@ -79,7 +79,7 @@ private:
     float getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki);
     float baseLength(float a, float b, float theta);
     float angleBetween(float a, float b);
-    bool isEqual(float a, float b, float epsilon=0.001);
+    bool isEqual(float a, float b, float epsilon=0.0001);
     float argument(Eigen::Vector2f u, Eigen::Vector2f v);
     Eigen::Vector3f getBaryCoords(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
     float distanceToEdge(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vector3f &v2, float l_ij, float l_jk, float l_ki);

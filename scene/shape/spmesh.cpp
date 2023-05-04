@@ -241,22 +241,32 @@ void SPmesh::initSignpost() {
 //        validate();
 //    }
 
-    unordered_set<shared_ptr<InFace>> insertFaces = _faces;
+
+    unordered_set<shared_ptr<InFace>> insertFaces;
+    for (shared_ptr<InFace> face: _faces) {
+        insertFaces.insert(face);
+    }
     Vector3f p(1.f / 3, 1.f / 3, 1.f / 3);
     for (shared_ptr<InFace> face: insertFaces) {
 //        insertVertex(face, Vector3f(1.f / 3, 1.f / 3, 1.f / 3));
-            shared_ptr<InVertex> inserted = insertVertex(face, p);
-//            shared_ptr<InFace> face1 = inserted->halfedge->face;
-//            shared_ptr<InFace> face2 = inserted->halfedge->next->next->twin->face;
-//            shared_ptr<InFace> face3 = inserted->halfedge->next->next->twin->next->next->twin->face;
-//            insertVertex(face1, p);
-//            insertVertex(face2, p);
-//            insertVertex(face3, p);
+        shared_ptr<InVertex> inserted = insertVertex(face, p);
+//        shared_ptr<InFace> face1 = inserted->halfedge->face;
+//        shared_ptr<InFace> face2 = inserted->halfedge->next->next->twin->face;
+//        shared_ptr<InFace> face3 = inserted->halfedge->next->next->twin->next->next->twin->face;
+//        insertVertex(face1, p);
+//        insertVertex(face2, p);
+//        insertVertex(face3, p);
     }
     assert(insertFaces.size() * 3 == _faces.size());
 
-
-
+    insertFaces.clear();
+    for (shared_ptr<InFace> face: _faces) {
+        insertFaces.insert(face);
+    }
+    for (shared_ptr<InFace> face: insertFaces) {
+        shared_ptr<InVertex> inserted = insertVertex(face, p);
+    }
+    assert(insertFaces.size() * 3 == _faces.size());
     validate();
 }
 
@@ -410,7 +420,7 @@ std::tuple<std::shared_ptr<T>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceVe
 
     // find ray-edge intersection with triangle edges within distance (if any)
     float t = distance;
-    int minT = 0; // for triangle whose base is ij: minT=0 => closest/intersected edge is jk, minT=1 => ki closest, minT=2 => ij closest
+    int minT = -1; // for triangle whose base is ij: minT=0 => closest/intersected edge is jk, minT=1 => ki closest, minT=2 => ij closest
     for (int i = 0; i < 3; i++) {
         if (baryDir(i) != 0.f) { // else direction is parallel to curr edge => no intersection
             float ti = -bary(i)/baryDir(i); // see pg 27 of tutorial
@@ -420,8 +430,6 @@ std::tuple<std::shared_ptr<T>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceVe
             }
         }
     }
-//    cout << "t:" << t << " d:" << distance << endl;
-//    cout << minT << endl;
 
     Vector2f newDir = -Vector2f::Ones(); // for easy debugging
     Vector2f p = -Vector2f::Ones();
@@ -461,11 +469,11 @@ std::tuple<std::shared_ptr<T>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceVe
 
         newDir = -((dir2d.dot(intersectedEdge) * newEdge) + (dir2d.dot(tijk) * tnew));
         newDir.normalize();
-        if (isEqual(edgeIntersectBary(0), 0)) {
+        if (isEqual(edgeIntersectBary(0), 0, 0.000001)) {
             p = edgeIntersectBary(1) * fj + edgeIntersectBary(2) * fi;
-        } else if (isEqual(edgeIntersectBary(1), 0)) {
+        } else if (isEqual(edgeIntersectBary(1), 0, 0.000001)) {
             p = edgeIntersectBary(0) * fi + edgeIntersectBary(2) * fj;
-        } else if (isEqual(edgeIntersectBary(2), 0)) {
+        } else if (isEqual(edgeIntersectBary(2), 0, 0.000001)) {
             p = edgeIntersectBary(0) * fj + edgeIntersectBary(1) * fi;
         }
 
@@ -484,7 +492,7 @@ std::tuple<std::shared_ptr<T>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceVe
 
         // intersect with triangle edges again
         t = distance;
-        minT = 0;
+        minT = -1;
         for (int i = 0; i < 3; i++) {
             if (baryDir(i) != 0.f) {
                 float ti = -bary(i)/baryDir(i);
@@ -494,7 +502,6 @@ std::tuple<std::shared_ptr<T>, Eigen::Vector3f, Eigen::Vector2f> SPmesh::traceVe
                 }
             }
         }
-//        cout << "t:" << t << " d:" << distance << endl;
     }
 
     Vector3f newPointBary = bary + t * baryDir;
