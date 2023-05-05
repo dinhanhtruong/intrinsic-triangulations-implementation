@@ -1057,6 +1057,9 @@ void SPmesh::delaunayRefinement(double minAngle) {
     // iterate until queue is empty or hit cap
     int i = 0;
     while (!faceQ.empty() && i < maxIterations) {
+        if (i % 100 == 0) {
+            cout << i << endl;
+        }
         edgesToCheck.clear();
 
         shared_ptr<InFace> nextFace = faceQ.front();
@@ -1102,7 +1105,7 @@ void SPmesh::delaunayRefinement(double minAngle) {
 //            double angle = getAngle(circumcenter - barycenter, Vector3d(-1, 1, 0)); // rep halfedge is (0,1,0) - (1,0,0)
             auto [endFace, circumBary, dir] = traceVector<InFace>(base, barycenter, dist, angle);
 
-            cout << circumBary << endl;
+//            cout << circumBary << endl;
 
             // skip if we're on an edge
             if (isEqual(circumBary[0], 0, 0.0005) || isEqual(circumBary[1], 0, 0.0005) || isEqual(circumBary[2], 0, 0.0005)) continue;
@@ -1111,38 +1114,38 @@ void SPmesh::delaunayRefinement(double minAngle) {
             shared_ptr<InVertex> inserted = insertVertex(endFace, circumBary);
 
             // check faces adjacent to inserted vertex
-//            shared_ptr<InHalfedge> curr = inserted->halfedge;
-//            do {
-//                shared_ptr<InFace> adjacentFace = curr->face;
+            shared_ptr<InHalfedge> curr = inserted->halfedge;
+            do {
+                shared_ptr<InFace> adjacentFace = curr->face;
 
-//                // enqueue adjacent faces that aren't already enqueued
-//                if (!facesToCheck.contains(adjacentFace)) {
-//                    facesToCheck.insert(adjacentFace);
-//                    faceQ.push(adjacentFace);
-//                }
+                // enqueue adjacent faces that aren't already enqueued
+                if (!facesToCheck.contains(adjacentFace)) {
+                    facesToCheck.insert(adjacentFace);
+                    faceQ.push(adjacentFace);
+                }
 
-//                // enqueue edges of adjacent faces that aren't already enqueued
-//                shared_ptr<InHalfedge> faceCurr = curr;
-//                do {
-//                    if (!edgesToCheck.contains(faceCurr->edge)) {
-//                        edgesToCheck.insert(faceCurr->edge);
-//                    }
-//                    faceCurr = faceCurr->next;
-//                } while (faceCurr != curr);
+                // enqueue edges of adjacent faces that aren't already enqueued
+                shared_ptr<InHalfedge> faceCurr = curr;
+                do {
+                    if (!edgesToCheck.contains(faceCurr->edge)) {
+                        edgesToCheck.insert(faceCurr->edge);
+                    }
+                    faceCurr = faceCurr->next;
+                } while (faceCurr != curr);
 
-//                curr = curr->twin->next;
-//            } while (curr != inserted->halfedge);
+                curr = curr->twin->next;
+            } while (curr != inserted->halfedge);
 
-            // after insertion need to once again flip edges
-//            unordered_set<shared_ptr<InFace>> newFacesToCheck = flipToDelaunay(edgesToCheck, minAngle);
+//             after insertion need to once again flip edges
+            unordered_set<shared_ptr<InFace>> newFacesToCheck = flipToDelaunay(edgesToCheck, minAngle);
 
-            // add faces disturbed by flipping back into queue
-//            for (shared_ptr<InFace> newFace: newFacesToCheck) {
-//                if (!facesToCheck.contains(newFace)) {
-//                    facesToCheck.insert(newFace);
-//                    faceQ.push(newFace);
-//                }
-//            }
+//             add faces disturbed by flipping back into queue
+            for (shared_ptr<InFace> newFace: newFacesToCheck) {
+                if (!facesToCheck.contains(newFace)) {
+                    facesToCheck.insert(newFace);
+                    faceQ.push(newFace);
+                }
+            }
         }
 
         i++;
