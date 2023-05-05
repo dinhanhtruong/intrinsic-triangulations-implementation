@@ -1102,6 +1102,9 @@ void SPmesh::delaunayRefinement(float minAngle) {
 
             cout << circumBary << endl;
 
+            // skip if we're on an edge
+            if (isEqual(circumBary[0], 0, 0.0005) || isEqual(circumBary[1], 0, 0.0005) || isEqual(circumBary[2], 0, 0.0005)) continue;
+
             // insert circumcenter on that face
             shared_ptr<InVertex> inserted = insertVertex(endFace, circumBary);
 
