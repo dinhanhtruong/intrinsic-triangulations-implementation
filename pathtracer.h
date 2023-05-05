@@ -5,13 +5,6 @@
 
 #include "scene/scene.h"
 
-const Eigen::Vector3f colors[4] = {
-    Eigen::Vector3f(0.970, 0.611, 0.611),
-    Eigen::Vector3f(0.611, 0.898, 0.970),
-    Eigen::Vector3f(0.970, 0.928, 0.611),
-    Eigen::Vector3f(0.611, 0.970, 0.731)
-};
-
 class PathTracer
 {
 public:

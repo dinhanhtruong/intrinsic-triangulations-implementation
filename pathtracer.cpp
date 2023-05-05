@@ -119,19 +119,15 @@ Vector3f PathTracer::traceRay(const Ray& r, Scene& scene, bool countEmitted) {
     if(scene.getIntersection(rayOut, &insct)) {
         const Triangle *tri = static_cast<const Triangle *>(insct.data); // cast intersected obj to tri since handling tri meshes
         SPmesh* spmesh = scene.getSPMesh();
-        int color = spmesh->getColor(tri, insct.hit, scene.getCamera().getPosition());
-        if (color == -1) return Vector3f(0, 0, 0);
-        if (color == -2) return Vector3f(0.3, 0.3, 0.3);
-        if (color == -3) return Vector3f(1,1,1); //intrinsic edges
+        Vector3f color = spmesh->getColor(tri, insct.hit, scene.getCamera().getPosition());
 
-        Vector3f diffuseColor = colors[color];
         float kd = 0.5f;
         float ka = 0.3f;
 
         Vector3f normal = tri->getNormal(insct.hit); // world space normal at insct point
         Vector3f directionalLight(-1.f, -1.f, -1.f);
 
-        return ka * diffuseColor + kd * normal.dot(-directionalLight) * diffuseColor;
+        return ka * color + kd * normal.dot(-directionalLight) * color;
 
 //        Vector3f radianceIn(0,0,0); // incoming radiance Li(r_o, r_d) toward the origin of the ray r from the intersection
 

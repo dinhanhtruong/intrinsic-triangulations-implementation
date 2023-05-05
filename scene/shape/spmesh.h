@@ -11,6 +11,15 @@
 #include "Eigen/Geometry"
 #include "Eigen/Dense"
 
+const std::vector<Eigen::Vector3f> colors = {
+    Eigen::Vector3f(0.925, 0.569, 0.565),
+    Eigen::Vector3f(0.992, 0.741, 0.239),
+    Eigen::Vector3f(0.992, 0.945, 0.282),
+    Eigen::Vector3f(0.702, 0.875, 0.388),
+    Eigen::Vector3f(0.384, 0.835, 0.961),
+    Eigen::Vector3f(0.8, 0.667, 0.973)
+};
+
 typedef struct InHalfedge InHalfedge;
 typedef struct InEdge InEdge;
 typedef struct InFace InFace;
@@ -58,7 +67,7 @@ public:
 
     // visualization functions
     void assignColors();
-    int getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Vector3f &camPos);
+    Eigen::Vector3f getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Vector3f &camPos);
 
 private:
     /// validator helpers

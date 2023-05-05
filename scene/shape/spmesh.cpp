@@ -1113,10 +1113,12 @@ void SPmesh::validate() {
 void SPmesh::assignColors() {
     // adapted from https://www.geeksforgeeks.org/graph-coloring-set-2-greedy-algorithm/#
     _faceColors.reserve(_faces.size());
-    int colorsUsed[4] = {false, false, false, false};
+    int numColors = colors.size();
+    int colorsUsed[numColors];
+    for (int i = 0; i < numColors; i++) colorsUsed[i] = false;
 
     auto face = _faces.begin();
-    _faceColors[*face] = 0; // assign first color
+    _faceColors[*face] = rand() % numColors; // assign first color randomly
 
     for (face = _faces.begin()++; face != _faces.end(); face++) {
         // flag colors already used by adjacent faces
@@ -1127,9 +1129,10 @@ void SPmesh::assignColors() {
         if (_faceColors.contains(adj2)) colorsUsed[_faceColors[adj2]] = true;
         if (_faceColors.contains(adj3)) colorsUsed[_faceColors[adj3]] = true;
 
-        // find lowest unused color
+        // select random color, if its used, loop over array until an unused one is found
+        // mod to wrap around to beginning
         int firstAvailableColor;
-        for (firstAvailableColor = 0; firstAvailableColor < 4; firstAvailableColor++) {
+        for (firstAvailableColor = rand() % numColors; firstAvailableColor < numColors; firstAvailableColor = (firstAvailableColor + 1) % numColors) {
             if (!colorsUsed[firstAvailableColor]) break;
         }
 
@@ -1137,7 +1140,7 @@ void SPmesh::assignColors() {
         _faceColors[*face] = firstAvailableColor;
 
         // reset color flags
-        for (int i = 0; i < 4; i++) colorsUsed[i] = false;
+        for (int i = 0; i < numColors; i++) colorsUsed[i] = false;
     }
 }
 
@@ -1167,11 +1170,8 @@ float SPmesh::distanceToEdge(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vec
     return distance(l_ij, l_jk, l_ki, p, projected);
 }
 
-int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Vector3f &camPos) {
+Vector3f SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Vector3f &camPos) {
     shared_ptr<ExFace> exFace = _exMesh.getExTriangle(tri->getIndex());
-
-//    float distanceToCamera = (camPos - point).norm();
-//    cout << distanceToCamera << endl;
 
     // calculate barycentric coords on exFace
     Vector3f v1 = exFace->halfedge->v->pos;
@@ -1196,16 +1196,14 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Ve
     float d_jk = distanceToEdge(p, j, k, l_ij, l_jk, l_ki);
     float d_ki = distanceToEdge(p, k, i, l_ij, l_jk, l_ki);
 
-//    float OUTLINE = 0.001 * distanceToCamera;
-    float OUTLINE = 0.05;
+    float OUTLINE = 0.1;
 
     if (d_ij < OUTLINE || d_jk < OUTLINE || d_ki < OUTLINE) {
-        return -1;
+        return Vector3f(0, 0, 0);
     }
 
     // paint intrinsic edges white
     Vector3f intrinsicBary = get<1>(intrinsic);
-//    assert(isEqual(barySum, 1));
     shared_ptr<InFace> inFace = get<0>(intrinsic);
 
     l_ij = inFace->halfedge->edge->length;
@@ -1217,9 +1215,9 @@ int SPmesh::getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Ve
     d_ki = distanceToEdge(intrinsicBary, k, i, l_ij, l_jk, l_ki);
 
     if (d_ij < OUTLINE || d_jk < OUTLINE || d_ki < OUTLINE) {
-        return -3;
+        return Vector3f(1, 1, 1);
     }
 
     // return color of that face
-    return _faceColors[inFace];
+    return colors[_faceColors[inFace]];
 }
