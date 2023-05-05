@@ -95,7 +95,6 @@ private:
     Eigen::Vector3f getVPos(std::shared_ptr<InVertex> v);
     std::shared_ptr<InEdge> getEdge(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1) const;
     std::shared_ptr<InHalfedge> getHalfEdgeWithSource(std::shared_ptr<InEdge> edge, std::shared_ptr<InVertex> sourceVertex) const;
-    bool edgeIsDelaunay(std::shared_ptr<InEdge> edge);
     void eraseTriangle(std::shared_ptr<InFace> tri);
     std::shared_ptr<InFace> insertTriangle(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1, std::shared_ptr<InVertex> v2);
 
@@ -123,7 +122,10 @@ private:
     void moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab, const Eigen::Vector3f &p);
 
     // triangulation
-    void delaunayTriangulation();
+    bool edgeIsDelaunay(std::shared_ptr<InEdge> edge);
+    bool shouldRefine(std::shared_ptr<InFace> tri, float minAngle);
+    std::unordered_set<std::shared_ptr<InFace>> flipToDelaunay(std::unordered_set<std::shared_ptr<InEdge>>& edgesToCheck, float minAngle);
+    void delaunayRefinement(float minAngle);
 
 
     std::vector<Eigen::Vector3f> _vertices;
