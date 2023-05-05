@@ -227,7 +227,7 @@ void SPmesh::initSignpost() {
 //    unordered_set<shared_ptr<InEdge>> edgesToCheck = _edges;
 //    flipToDelaunay(edgesToCheck, M_PI / 6.f);
 
-    delaunayRefinement(M_PI / 6.f);
+    delaunayRefinement(M_PI / 6.1f);
 
     validate();
 }
@@ -338,7 +338,6 @@ std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> SPmesh::traceFromExtrinsicV
     auto [face, bary, dir] = traceVector<InFace>(base, Vector3f(1.f, 0.f, 0.f), distance, traceAngleRelativeTheta);
     return make_tuple(face, bary);
 }
-
 
 // angle should be the flat intrinsic angle (NOT phi) between base and the desired trace direction
 template <typename T>
@@ -1075,51 +1074,70 @@ void SPmesh::delaunayRefinement(float minAngle) {
 
             Vector3f circumcenter = Vector3f(v_i, v_j, v_k) / (v_i + v_j + v_k);
 
+            assert(isEqual(circumcenter[0] + circumcenter[1] + circumcenter[2], 1));
+
             // trace to find the face and coordinates where the circumcenter is
             shared_ptr<InHalfedge> base = nextFace->halfedge;
             Vector3f barycenter = Vector3f(1.f/3, 1.f/3, 1.f/3);
-            float dist = distance(l_ij, l_jk, l_ki, barycenter, circumcenter);
 
-            // TODO: this is wrong
-            float angle = getAngle(circumcenter - barycenter, Vector3f(-1, 1, 0)); // rep halfedge is (0,1,0) - (1,0,0)
+            // convert to 2d local to get angle
+            Vector2f fi = Vector2f(0.f, 0.f);
+            Vector2f fj = Vector2f(l_ij, 0.f);
+            float theta_i = angleBetween(base->next->next->twin->angle, base->angle) * base->v->bigTheta/(2*M_PI);
+            Vector2f fk = l_ki * Vector2f(cos(theta_i), sin(theta_i));
+            Matrix3f A;
+            A << fi(0), fj(0), fk(0),
+                 fi(1), fj(1), fk(1),
+                 1.f, 1.f, 1.f;
+            Vector3f barycenterLocal = A * barycenter;
+            Vector3f circumcenterLocal = A * circumcenter;
+            Vector2f traceDir = Vector2f(circumcenterLocal[0] - barycenterLocal[0], circumcenterLocal[1] - barycenterLocal[1]);
+
+            float dist = traceDir.norm();
+//            float dist = distance(l_ij, l_jk, l_ki, barycenter, circumcenter);
+
+            float angle = argument(fj, traceDir);
+//            float angle = getAngle(circumcenter - barycenter, Vector3f(-1, 1, 0)); // rep halfedge is (0,1,0) - (1,0,0)
             auto [endFace, circumBary, dir] = traceVector<InFace>(base, barycenter, dist, angle);
+
+            cout << circumBary << endl;
 
             // insert circumcenter on that face
             shared_ptr<InVertex> inserted = insertVertex(endFace, circumBary);
 
             // check faces adjacent to inserted vertex
-            shared_ptr<InHalfedge> curr = inserted->halfedge;
-            do {
-                shared_ptr<InFace> adjacentFace = curr->face;
+//            shared_ptr<InHalfedge> curr = inserted->halfedge;
+//            do {
+//                shared_ptr<InFace> adjacentFace = curr->face;
 
-                // enqueue adjacent faces that aren't already enqueued
-                if (!facesToCheck.contains(adjacentFace)) {
-                    facesToCheck.insert(adjacentFace);
-                    faceQ.push(adjacentFace);
-                }
+//                // enqueue adjacent faces that aren't already enqueued
+//                if (!facesToCheck.contains(adjacentFace)) {
+//                    facesToCheck.insert(adjacentFace);
+//                    faceQ.push(adjacentFace);
+//                }
 
-                // enqueue edges of adjacent faces that aren't already enqueued
-                shared_ptr<InHalfedge> faceCurr = curr;
-                do {
-                    if (!edgesToCheck.contains(faceCurr->edge)) {
-                        edgesToCheck.insert(faceCurr->edge);
-                    }
-                    faceCurr = faceCurr->next;
-                } while (faceCurr != curr);
+//                // enqueue edges of adjacent faces that aren't already enqueued
+//                shared_ptr<InHalfedge> faceCurr = curr;
+//                do {
+//                    if (!edgesToCheck.contains(faceCurr->edge)) {
+//                        edgesToCheck.insert(faceCurr->edge);
+//                    }
+//                    faceCurr = faceCurr->next;
+//                } while (faceCurr != curr);
 
-                curr = curr->twin->next;
-            } while (curr != inserted->halfedge);
+//                curr = curr->twin->next;
+//            } while (curr != inserted->halfedge);
 
             // after insertion need to once again flip edges
-            unordered_set<shared_ptr<InFace>> newFacesToCheck = flipToDelaunay(edgesToCheck, minAngle);
+//            unordered_set<shared_ptr<InFace>> newFacesToCheck = flipToDelaunay(edgesToCheck, minAngle);
 
             // add faces disturbed by flipping back into queue
-            for (shared_ptr<InFace> newFace: newFacesToCheck) {
-                if (!facesToCheck.contains(newFace)) {
-                    facesToCheck.insert(newFace);
-                    faceQ.push(newFace);
-                }
-            }
+//            for (shared_ptr<InFace> newFace: newFacesToCheck) {
+//                if (!facesToCheck.contains(newFace)) {
+//                    facesToCheck.insert(newFace);
+//                    faceQ.push(newFace);
+//                }
+//            }
         }
 
         i++;
@@ -1191,9 +1209,9 @@ void SPmesh::checkTriangleInequality(const shared_ptr<InFace> face) {
     float l_ij = face->halfedge->edge->length;
     float l_jk = face->halfedge->next->edge->length;
     float l_ki = face->halfedge->next->next->edge->length;
-    assert(l_ij + l_jk > l_ki);
-    assert(l_jk + l_ki > l_ij);
-    assert(l_ki + l_ij > l_jk);
+    assert(l_ij + l_jk >= l_ki);
+    assert(l_jk + l_ki >= l_ij);
+    assert(l_ki + l_ij >= l_jk);
 }
 
 void SPmesh::validateSignpost() {

@@ -125,6 +125,7 @@ private:
     bool edgeIsDelaunay(std::shared_ptr<InEdge> edge);
     bool shouldRefine(std::shared_ptr<InFace> tri, float minAngle);
     std::unordered_set<std::shared_ptr<InFace>> flipToDelaunay(std::unordered_set<std::shared_ptr<InEdge>>& edgesToCheck, float minAngle);
+//    void refineFaces(std::unordered_set<std::shared_ptr<InFace>>& facesToCheck, float minAngle);
     void delaunayRefinement(float minAngle);
 
 
