@@ -11,13 +11,13 @@
 #include "Eigen/Geometry"
 #include "Eigen/Dense"
 
-const std::vector<Eigen::Vector3f> colors = {
-    Eigen::Vector3f(0.925, 0.569, 0.565),
-    Eigen::Vector3f(0.992, 0.741, 0.239),
-    Eigen::Vector3f(0.992, 0.945, 0.282),
-    Eigen::Vector3f(0.702, 0.875, 0.388),
-    Eigen::Vector3f(0.384, 0.835, 0.961),
-    Eigen::Vector3f(0.8, 0.667, 0.973)
+const std::vector<Eigen::Vector3d> colors = {
+    Eigen::Vector3d(0.925, 0.569, 0.565),
+    Eigen::Vector3d(0.992, 0.741, 0.239),
+    Eigen::Vector3d(0.992, 0.945, 0.282),
+    Eigen::Vector3d(0.702, 0.875, 0.388),
+    Eigen::Vector3d(0.384, 0.835, 0.961),
+    Eigen::Vector3d(0.8, 0.667, 0.973)
 };
 
 typedef struct InHalfedge InHalfedge;
@@ -30,21 +30,21 @@ typedef struct InHalfedge {
     std::shared_ptr<InHalfedge> twin;
     std::shared_ptr<InEdge> edge;
     std::shared_ptr<InFace> face;
-    float angle; // angle relative to the reference direction of the vertex at the base of the half angle
-//    float length; // should be the same as InEdge->length
+    double angle; // angle relative to the reference direction of the vertex at the base of the half angle
+//    double length; // should be the same as InEdge->length
 } InHalfedge;
 
 typedef struct InVertex {
     std::shared_ptr<InHalfedge> halfedge;
     std::shared_ptr<ExVertex> exVertex; // (only set for original vertices of the input)
     std::shared_ptr<ExFace> exFace; // null (only set for new vertices without extrinsic counterpart)
-    float bigTheta; // (big theta in equation 1)
-    Eigen::Vector3f barycentricPos; //(of this vertex in the extrinsic triangle it’s contained in)
+    double bigTheta; // (big theta in equation 1)
+    Eigen::Vector3d barycentricPos; //(of this vertex in the extrinsic triangle it’s contained in)
 } InVertIn;
 
 typedef struct InEdge {
     std::shared_ptr<InHalfedge> halfedge;
-    float length;
+    double length;
 } InEdge;
 
 typedef struct InFace {
@@ -63,11 +63,11 @@ public:
     void validateSignpost();
 
     // algo 11
-    std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> pointQuery(std::shared_ptr<ExFace> xyz, Eigen::Vector3f& p);
+    std::tuple<std::shared_ptr<InFace>, Eigen::Vector3d> pointQuery(std::shared_ptr<ExFace> xyz, Eigen::Vector3d& p);
 
     // visualization functions
     void assignColors();
-    Eigen::Vector3f getColor(const Triangle* tri, Eigen::Vector3f point, const Eigen::Vector3f &camPos);
+    Eigen::Vector3d getColor(const Triangle* tri, Eigen::Vector3d point, const Eigen::Vector3d &camPos);
 
 private:
     /// validator helpers
@@ -80,19 +80,19 @@ private:
     /// signpost algos & helpers
     // old code
     int getDegree(const std::shared_ptr<InVertex> &v);
-//    Eigen::Vector3f getNormal(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
-//    float getArea(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
+//    Eigen::Vector3d getNormal(Eigen::Vector3d &v1, Eigen::Vector3d &v2, Eigen::Vector3d &v3);
+//    double getArea(Eigen::Vector3d &v1, Eigen::Vector3d &v2, Eigen::Vector3d &v3);
 
     // math/connectivity heleprs
-    float getAngle(Eigen::Vector3f v1, Eigen::Vector3f v2);
-    float getAngleFromEdgeLengths(float l_ij, float l_jk, float l_ki);
-    float baseLength(float a, float b, float theta);
-    float angleBetween(float a, float b);
-    bool isEqual(float a, float b, float epsilon=0.0001);
-    float argument(Eigen::Vector2f u, Eigen::Vector2f v);
-    Eigen::Vector3f getBaryCoords(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
-    float distanceToEdge(Eigen::Vector3f &p, Eigen::Vector3f &v1, Eigen::Vector3f &v2, float l_ij, float l_jk, float l_ki);
-    Eigen::Vector3f getVPos(std::shared_ptr<InVertex> v);
+    double getAngle(Eigen::Vector3d v1, Eigen::Vector3d v2);
+    double getAngleFromEdgeLengths(double l_ij, double l_jk, double l_ki);
+    double baseLength(double a, double b, double theta);
+    double angleBetween(double a, double b);
+    bool isEqual(double a, double b, double epsilon=0.0001);
+    double argument(Eigen::Vector2d u, Eigen::Vector2d v);
+    Eigen::Vector3d getBaryCoords(Eigen::Vector3d &p, Eigen::Vector3d &v1, Eigen::Vector3d &v2, Eigen::Vector3d &v3);
+    double distanceToEdge(Eigen::Vector3d &p, Eigen::Vector3d &v1, Eigen::Vector3d &v2, double l_ij, double l_jk, double l_ki);
+    Eigen::Vector3d getVPos(std::shared_ptr<InVertex> v);
     std::shared_ptr<InEdge> getEdge(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1) const;
     std::shared_ptr<InHalfedge> getHalfEdgeWithSource(std::shared_ptr<InEdge> edge, std::shared_ptr<InVertex> sourceVertex) const;
     void eraseTriangle(std::shared_ptr<InFace> tri);
@@ -110,26 +110,26 @@ private:
     ///     (2) barycentric coords of the end point
     ///     (3)** (this is the extra one my function needs):
     ///         direction vector u of the trace in the local 2D coordinate system of the destination EXTRINSIC triangle.
-    std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3f, Eigen::Vector2f> traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, float distance, float angle);
-    std::tuple<std::shared_ptr<InFace>, Eigen::Vector3f> traceFromExtrinsicVertex(std::shared_ptr<ExVertex> v_i, float distance, float angle);
+    std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3d, Eigen::Vector2d> traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, double distance, double angle);
+    std::tuple<std::shared_ptr<InFace>, Eigen::Vector3d> traceFromExtrinsicVertex(std::shared_ptr<ExVertex> v_i, double distance, double angle);
     template <typename T>
-    std::tuple<std::shared_ptr<T>, Eigen::Vector3f, Eigen::Vector2f> traceVector(auto base, Eigen::Vector3f baryCoords, float distance, float angle);
+    std::tuple<std::shared_ptr<T>, Eigen::Vector3d, Eigen::Vector2d> traceVector(auto base, Eigen::Vector3d baryCoords, double distance, double angle);
     void updateVertex(std::shared_ptr<InVertex> i);
     std::shared_ptr<InEdge> flipEdge(std::shared_ptr<InEdge> ij);
-    float distance(float l_12, float l_23, float l_31, const Eigen::Vector3f p, const Eigen::Vector3f q);
-    std::shared_ptr<InVertex> insertVertex(std::shared_ptr<InFace> face, Eigen::Vector3f barycentricCoords);
-    std::pair<float, float> vectorToPoint(float l_ij, float l_jk, float l_ki, const Eigen::Vector3f &i, const Eigen::Vector3f &j, const Eigen::Vector3f &p);
-    void moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab, const Eigen::Vector3f &p);
+    double distance(double l_12, double l_23, double l_31, const Eigen::Vector3d p, const Eigen::Vector3d q);
+    std::shared_ptr<InVertex> insertVertex(std::shared_ptr<InFace> face, Eigen::Vector3d barycentricCoords);
+    std::pair<double, double> vectorToPoint(double l_ij, double l_jk, double l_ki, const Eigen::Vector3d &i, const Eigen::Vector3d &j, const Eigen::Vector3d &p);
+    void moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab, const Eigen::Vector3d &p);
 
     // triangulation
     bool edgeIsDelaunay(std::shared_ptr<InEdge> edge);
-    bool shouldRefine(std::shared_ptr<InFace> tri, float minAngle);
-    std::unordered_set<std::shared_ptr<InFace>> flipToDelaunay(std::unordered_set<std::shared_ptr<InEdge>>& edgesToCheck, float minAngle);
-//    void refineFaces(std::unordered_set<std::shared_ptr<InFace>>& facesToCheck, float minAngle);
-    void delaunayRefinement(float minAngle);
+    bool shouldRefine(std::shared_ptr<InFace> tri, double minAngle);
+    std::unordered_set<std::shared_ptr<InFace>> flipToDelaunay(std::unordered_set<std::shared_ptr<InEdge>>& edgesToCheck, double minAngle);
+//    void refineFaces(std::unordered_set<std::shared_ptr<InFace>>& facesToCheck, double minAngle);
+    void delaunayRefinement(double minAngle);
 
 
-    std::vector<Eigen::Vector3f> _vertices;
+    std::vector<Eigen::Vector3d> _vertices;
     std::vector<Eigen::Vector3i> _facesList;
     std::unordered_set<std::shared_ptr<InVertex>> _verts;
     std::unordered_set<std::shared_ptr<InEdge>> _edges;

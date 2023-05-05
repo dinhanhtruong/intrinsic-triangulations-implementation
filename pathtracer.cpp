@@ -119,7 +119,7 @@ Vector3f PathTracer::traceRay(const Ray& r, Scene& scene, bool countEmitted) {
     if(scene.getIntersection(rayOut, &insct)) {
         const Triangle *tri = static_cast<const Triangle *>(insct.data); // cast intersected obj to tri since handling tri meshes
         SPmesh* spmesh = scene.getSPMesh();
-        Vector3f color = spmesh->getColor(tri, insct.hit, scene.getCamera().getPosition());
+        Vector3f color = spmesh->getColor(tri, insct.hit.cast<double>(), scene.getCamera().getPosition().cast<double>()).cast<float>();
 
         float kd = 0.5f;
         float ka = 0.3f;

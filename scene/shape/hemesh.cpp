@@ -24,7 +24,7 @@ void HEmesh::init(int numV, int numF)
     _halfedges.reserve(numF * 3);
 }
 
-shared_ptr<ExVertex> HEmesh::makeVertex(shared_ptr<ExHalfedge> halfedge, Vector3f pos, shared_ptr<InVertex> inVertex) {
+shared_ptr<ExVertex> HEmesh::makeVertex(shared_ptr<ExHalfedge> halfedge, Vector3d pos, shared_ptr<InVertex> inVertex) {
     shared_ptr<ExVertex> v = make_shared<ExVertex>(ExVertex{halfedge, pos, inVertex});
     _verts.insert(v);
     return v;
@@ -56,17 +56,17 @@ shared_ptr<ExFace> HEmesh::makeFace(shared_ptr<ExHalfedge> halfedge) {
 //    return i;
 //}
 
-//Vector3f HEmesh::getNormal(Vector3f &v1, Vector3f &v2, Vector3f &v3) {
-//    Vector3f ab = v3 - v1;
-//    Vector3f ac = v2 - v1;
-//    Vector3f normal = ac.cross(ab);
+//Vector3d HEmesh::getNormal(Vector3d &v1, Vector3d &v2, Vector3d &v3) {
+//    Vector3d ab = v3 - v1;
+//    Vector3d ac = v2 - v1;
+//    Vector3d normal = ac.cross(ab);
 //    normal.normalize();
 //    return normal;
 //}
 
-//float HEmesh::getArea(Vector3f &v1, Vector3f &v2, Vector3f &v3) {
-//    Vector3f AC = v3 - v1;
-//    Vector3f AB = v2 - v1;
+//double HEmesh::getArea(Vector3d &v1, Vector3d &v2, Vector3d &v3) {
+//    Vector3d AC = v3 - v1;
+//    Vector3d AB = v2 - v1;
 //    return AB.cross(AC).norm()/2.f;
 //}
 

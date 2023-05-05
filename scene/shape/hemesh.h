@@ -10,8 +10,8 @@
 #include "Eigen/Geometry"
 #include "Eigen/Dense"
 
-//EIGEN_DEFINE_STL_VECTOR_SPECIALIZATION(Eigen::Matrix2f);
-//EIGEN_DEFINE_STL_VECTOR_SPECIALIZATION(Eigen::Matrix3f);
+//EIGEN_DEFINE_STL_VECTOR_SPECIALIZATION(Eigen::Matrix2d);
+//EIGEN_DEFINE_STL_VECTOR_SPECIALIZATION(Eigen::Matrix3d);
 //EIGEN_DEFINE_STL_VECTOR_SPECIALIZATION(Eigen::Matrix3i);
 
 typedef struct ExHalfedge ExHalfedge;
@@ -26,19 +26,19 @@ typedef struct ExHalfedge {
     std::shared_ptr<ExHalfedge> twin;
     std::shared_ptr<ExEdge> edge;
     std::shared_ptr<ExFace> face;
-    float angle;
+    double angle;
 } ExHalfedge;
 
 typedef struct ExVertex {
     std::shared_ptr<ExHalfedge> halfedge;
-    Eigen::Vector3f pos;
+    Eigen::Vector3d pos;
     std::shared_ptr<InVertex> inVertex;
-    float bigTheta;
+    double bigTheta;
 } ExVertex;
 
 typedef struct ExEdge {
     std::shared_ptr<ExHalfedge> halfedge;
-    float length;
+    double length;
 } ExEdge;
 
 typedef struct ExFace {
@@ -51,7 +51,7 @@ public:
 //    EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
     void init(int numV, int numF);
     void validate();
-    std::shared_ptr<ExVertex> makeVertex(std::shared_ptr<ExHalfedge> halfedge, Eigen::Vector3f pos, std::shared_ptr<InVertex> inVertex);
+    std::shared_ptr<ExVertex> makeVertex(std::shared_ptr<ExHalfedge> halfedge, Eigen::Vector3d pos, std::shared_ptr<InVertex> inVertex);
     std::shared_ptr<ExHalfedge> makeHalfedge(std::shared_ptr<ExVertex> v, std::shared_ptr<ExHalfedge> next, std::shared_ptr<ExHalfedge> twin, std::shared_ptr<ExEdge> edge, std::shared_ptr<ExFace> face);
     std::shared_ptr<ExEdge> makeEdge(std::shared_ptr<ExHalfedge> halfedge);
     std::shared_ptr<ExFace> makeFace(std::shared_ptr<ExHalfedge> halfedge);
@@ -63,8 +63,8 @@ private:
     void checkFaces();
     void checkVertices();
 //    int getDegree(const std::shared_ptr<ExVertex> &v);
-//    Eigen::Vector3f getNormal(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
-//    float getArea(Eigen::Vector3f &v1, Eigen::Vector3f &v2, Eigen::Vector3f &v3);
+//    Eigen::Vector3d getNormal(Eigen::Vector3d &v1, Eigen::Vector3d &v2, Eigen::Vector3d &v3);
+//    double getArea(Eigen::Vector3d &v1, Eigen::Vector3d &v2, Eigen::Vector3d &v3);
 
     std::unordered_set<std::shared_ptr<ExVertex>> _verts;
     std::unordered_set<std::shared_ptr<ExEdge>> _edges;
