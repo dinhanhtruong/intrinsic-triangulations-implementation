@@ -1,5 +1,6 @@
 #include <QCoreApplication>
 #include <QCommandLineParser>
+#include <QDir>
 
 #include <iostream>
 
@@ -43,17 +44,20 @@ int main(int argc, char *argv[])
 
     QRgb *data = reinterpret_cast<QRgb *>(image.bits());
 
-    tracer.traceScene(data, *scene);
-    delete scene;
+    QDir dir(output);
+    if (!dir.exists()){
+      dir.mkpath(".");
+    }
 
-    bool success = image.save(output);
-    if(!success) {
-        success = image.save(output, "PNG");
+    dir.setNameFilters(QStringList() << "*.png");
+    dir.setFilter(QDir::Files);
+    for(QString& dirFile: dir.entryList()) {
+        dir.remove(dirFile);
     }
-    if(success) {
-        std::cout << "Wrote rendered image to " << output.toStdString() << std::endl;
-    } else {
-        std::cerr << "Error: failed to write image to " << output.toStdString() << std::endl;
-    }
+
+    scene->getSPMesh()->setRenderInfo(scene, &tracer, &image, output);
+    scene->getSPMesh()->renderFlipping();
+
+    delete scene;
     a.exit();
 }

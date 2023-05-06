@@ -6,19 +6,23 @@
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
+#include <QImage>
 
 #include "Eigen/StdVector"
 #include "Eigen/Geometry"
 #include "Eigen/Dense"
 
 const std::vector<Eigen::Vector3d> colors = {
-    Eigen::Vector3d(0.925, 0.569, 0.565),
-    Eigen::Vector3d(0.992, 0.741, 0.239),
-    Eigen::Vector3d(0.992, 0.945, 0.282),
-    Eigen::Vector3d(0.702, 0.875, 0.388),
-    Eigen::Vector3d(0.384, 0.835, 0.961),
-    Eigen::Vector3d(0.8, 0.667, 0.973)
+    Eigen::Vector3d(0.863, 0.314, 0.306),
+    Eigen::Vector3d(1, 0.667, 0),
+    Eigen::Vector3d(1, 0.957, 0.373),
+    Eigen::Vector3d(0.557, 0.8, 0.106),
+    Eigen::Vector3d(0, 0.659, 0.839),
+    Eigen::Vector3d(0.792, 0.635, 1)
 };
+
+class Scene;
+class PathTracer;
 
 typedef struct InHalfedge InHalfedge;
 typedef struct InEdge InEdge;
@@ -66,8 +70,11 @@ public:
     std::tuple<std::shared_ptr<InFace>, Eigen::Vector3d> pointQuery(std::shared_ptr<ExFace> xyz, Eigen::Vector3d& p);
 
     // visualization functions
-    void assignColors();
+    void setRenderInfo(Scene* scene, PathTracer* tracer, QImage* image, QString outDir);
+    void assignColors(std::unordered_set<std::shared_ptr<InFace>>& faces);
+    void renderImage(int frame);
     Eigen::Vector3d getColor(const Triangle* tri, Eigen::Vector3d point, const Eigen::Vector3d &camPos);
+    void renderFlipping();
 
 private:
     /// validator helpers
@@ -147,7 +154,14 @@ private:
     std::unordered_set<std::shared_ptr<InHalfedge>> _newHalfedges;
     std::unordered_set<std::shared_ptr<InFace>> _newFaces;
     std::unordered_set<std::shared_ptr<InEdge>> _newMiddleEdges;
+
     HEmesh _exMesh;
+
     std::unordered_map<std::shared_ptr<InFace>, int> _faceColors;
+    Scene* _scene;
+    PathTracer* _tracer;
+    QImage* _image;
+    QRgb* _data;
+    QString _outDir;
 };
 

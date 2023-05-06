@@ -23,11 +23,6 @@ private:
 
     Ray sampleRandomRayThruPixel(Eigen::Vector3f camOrigin, int imgRow, int imgCol);
     Ray stratifiedSubpixelSampling(Eigen::Vector3f camOrigin, int imgRow, int imgCol, int numCellsPerSide, int pixelCellIdx);
-
-    float getContinuationProb();
-
-    Eigen::Vector3f directLighting(IntersectionInfo& surfacePoint, const Eigen::Vector3f& w_i, const Scene& scene);
-
 };
 
 #endif // PATHTRACER_H

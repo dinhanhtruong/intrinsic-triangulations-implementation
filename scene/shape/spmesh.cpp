@@ -1,4 +1,5 @@
 #include "spmesh.h"
+#include "pathtracer.h"
 
 #include <iostream>
 #include <fstream>
@@ -229,7 +230,7 @@ void SPmesh::initSignpost() {
 //    unordered_set<shared_ptr<InEdge>> edgesToCheck = _edges;
 //    flipToDelaunay(edgesToCheck, M_PI / 6.0);
 
-    delaunayRefinement(M_PI / 6.1f);
+//    delaunayRefinement(M_PI / 8.0);
 
     validate();
 }
@@ -592,6 +593,11 @@ std::shared_ptr<InEdge> SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
     updateSignpost(ki);
 
     validate();
+
+    unordered_set<shared_ptr<InFace>> newFaces;
+    newFaces.insert(tri_ilk);
+    newFaces.insert(tri_jkl);
+    assignColors(newFaces);
 
 //    cout << "flipped edge" << endl;
     return kl->edge;
@@ -1000,6 +1006,7 @@ unordered_set<shared_ptr<InFace>> SPmesh::flipToDelaunay(unordered_set<shared_pt
 
     // iterate until queue is empty or hit cap
     int i = 0;
+    int frame = 0;
     while (!edgeQ.empty() && i < maxIterations) {
         shared_ptr<InEdge> nextEdge = edgeQ.front();
         edgeQ.pop();
@@ -1032,6 +1039,9 @@ unordered_set<shared_ptr<InFace>> SPmesh::flipToDelaunay(unordered_set<shared_pt
             if (!facesToCheck.contains(adjacentFace) && shouldRefine(adjacentFace, minAngle)) {
                 facesToCheck.insert(adjacentFace);
             }
+
+            frame++;
+            renderImage(frame);
         }
         i++;
     }
@@ -1269,17 +1279,25 @@ void SPmesh::validate() {
 ///////////// VISUALIZATION //////////////////
 //////////////////////////////////////////////
 
-void SPmesh::assignColors() {
+void SPmesh::setRenderInfo(Scene* scene, PathTracer* tracer, QImage* image, QString outDir) {
+    _scene = scene;
+    _tracer = tracer;
+    _image = image;
+    _data = reinterpret_cast<QRgb *>(image->bits());
+    _outDir = outDir;
+}
+
+void SPmesh::assignColors(std::unordered_set<std::shared_ptr<InFace>>& faces) {
     // adapted from https://www.geeksforgeeks.org/graph-coloring-set-2-greedy-algorithm/#
-    _faceColors.reserve(_faces.size());
+    _faceColors.reserve(faces.size());
     int numColors = colors.size();
     int colorsUsed[numColors];
     for (int i = 0; i < numColors; i++) colorsUsed[i] = false;
 
-    auto face = _faces.begin();
+    auto face = faces.begin();
     _faceColors[*face] = rand() % numColors; // assign first color randomly
 
-    for (face = _faces.begin()++; face != _faces.end(); face++) {
+    for (face = faces.begin()++; face != faces.end(); face++) {
         // flag colors already used by adjacent faces
         std::shared_ptr<InFace> adj1 = (*face)->halfedge->twin->face;
         std::shared_ptr<InFace> adj2 = (*face)->halfedge->next->twin->face;
@@ -1327,6 +1345,22 @@ double SPmesh::distanceToEdge(Eigen::Vector3d &p, Eigen::Vector3d &v1, Eigen::Ve
     Vector3d v = v2 - v1;
     Vector3d projected = v1 + v * (u.dot(v) / v.dot(v));
     return distance(l_ij, l_jk, l_ki, p, projected);
+}
+
+void SPmesh::renderImage(int frame) {
+    _tracer->traceScene(_data, *_scene);
+
+    QString filepath = _outDir + "/" + QStringLiteral("%1").arg(frame, 5, 10, QLatin1Char('0')) + ".png";
+
+    bool success = _image->save(filepath);
+    if(!success) {
+        success = _image->save(filepath, "PNG");
+    }
+    if(success) {
+        std::cout << "Wrote rendered image to " << filepath.toStdString() << std::endl;
+    } else {
+        std::cerr << "Error: failed to write image to " << filepath.toStdString() << std::endl;
+    }
 }
 
 Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point, const Eigen::Vector3d &camPos) {
@@ -1379,4 +1413,14 @@ Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point, const Eige
 
     // return color of that face
     return colors[_faceColors[inFace]];
+}
+
+void SPmesh::renderFlipping() {
+    assignColors(_faces);
+    renderImage(0);
+
+    unordered_set<shared_ptr<InEdge>> edgesToCheck = _edges;
+    flipToDelaunay(edgesToCheck, M_PI / 6.0);
+
+    renderImage(10000);
 }
