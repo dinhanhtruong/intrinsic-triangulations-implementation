@@ -88,7 +88,7 @@ private:
     double getAngleFromEdgeLengths(double l_ij, double l_jk, double l_ki);
     double baseLength(double a, double b, double theta);
     double angleBetween(double a, double b);
-    bool isEqual(double a, double b, double epsilon=0.0001);
+    bool isEqual(double a, double b, double epsilon=0.00001);
     double argument(Eigen::Vector2d u, Eigen::Vector2d v);
     Eigen::Vector3d getBaryCoords(Eigen::Vector3d &p, Eigen::Vector3d &v1, Eigen::Vector3d &v2, Eigen::Vector3d &v3);
     double distanceToEdge(Eigen::Vector3d &p, Eigen::Vector3d &v1, Eigen::Vector3d &v2, double l_ij, double l_jk, double l_ki);
@@ -142,12 +142,15 @@ private:
         std::unordered_map<std::shared_ptr<InVertex>, std::shared_ptr<InEdge>>
     > _vertPairToEdge;
 
-    std::unordered_set<std::shared_ptr<InVertex>> _newVerts;
-    std::unordered_set<std::shared_ptr<InEdge>> _newEdges;
-    std::unordered_set<std::shared_ptr<InHalfedge>> _newHalfedges;
-    std::unordered_set<std::shared_ptr<InFace>> _newFaces;
-    std::unordered_set<std::shared_ptr<InEdge>> _newMiddleEdges;
+//    std::unordered_set<std::shared_ptr<InVertex>> _newVerts;
+//    std::unordered_set<std::shared_ptr<InEdge>> _newEdges;
+//    std::unordered_set<std::shared_ptr<InHalfedge>> _newHalfedges;
+//    std::unordered_set<std::shared_ptr<InFace>> _newFaces;
+//    std::unordered_set<std::shared_ptr<InEdge>> _newMiddleEdges;
+
     HEmesh _exMesh;
     std::unordered_map<std::shared_ptr<InFace>, int> _faceColors;
+    double _meanIntrinsicEdgeLength = 0;
+    void computeMeanIntrinsicEdgeLength();
 };
 

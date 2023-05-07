@@ -32,11 +32,11 @@ void SPmesh::initFromVectors(const vector<Vector3f> &vertices,
     _faces = unordered_set<shared_ptr<InFace>>();
     _halfedges = unordered_set<shared_ptr<InHalfedge>>();
 
-    _newVerts = unordered_set<shared_ptr<InVertex>>();
-    _newEdges = unordered_set<shared_ptr<InEdge>>();
-    _newFaces = unordered_set<shared_ptr<InFace>>();
-    _newHalfedges = unordered_set<shared_ptr<InHalfedge>>();
-    _newMiddleEdges = unordered_set<shared_ptr<InEdge>>();
+//    _newVerts = unordered_set<shared_ptr<InVertex>>();
+//    _newEdges = unordered_set<shared_ptr<InEdge>>();
+//    _newFaces = unordered_set<shared_ptr<InFace>>();
+//    _newHalfedges = unordered_set<shared_ptr<InHalfedge>>();
+//    _newMiddleEdges = unordered_set<shared_ptr<InEdge>>();
 
     _verts.reserve(vertices.size());
     _faces.reserve(faces.size());
@@ -229,7 +229,7 @@ void SPmesh::initSignpost() {
 //    unordered_set<shared_ptr<InEdge>> edgesToCheck = _edges;
 //    flipToDelaunay(edgesToCheck, M_PI / 6.0);
 
-    delaunayRefinement(M_PI / 6.1f);
+    delaunayRefinement(M_PI / 7.1f);
 
     validate();
 }
@@ -1041,7 +1041,7 @@ unordered_set<shared_ptr<InFace>> SPmesh::flipToDelaunay(unordered_set<shared_pt
 
 // course algorithm 5
 void SPmesh::delaunayRefinement(double minAngle) {
-    int maxIterations = 10000; // limit if convergence isn't reached
+    int maxIterations = 12000; // limit if convergence isn't reached
 
     // initial delaunay flipping
     unordered_set<shared_ptr<InEdge>> edgesToCheck = _edges;
@@ -1316,7 +1316,7 @@ Eigen::Vector3d SPmesh::getBaryCoords(Eigen::Vector3d &p, Eigen::Vector3d &v1, E
     double denom = d00 * d11 - d01 * d01;
     double v = (d11 * d20 - d01 * d21) / denom;
     double w = (d00 * d21 - d01 * d20) / denom;
-    double u = 1.0f - v - w;
+    double u = 1. - v - w;
     return Vector3d(u, v, w);
 }
 
@@ -1326,7 +1326,19 @@ double SPmesh::distanceToEdge(Eigen::Vector3d &p, Eigen::Vector3d &v1, Eigen::Ve
     Vector3d u = p - v1;
     Vector3d v = v2 - v1;
     Vector3d projected = v1 + v * (u.dot(v) / v.dot(v));
-    return distance(l_ij, l_jk, l_ki, p, projected);
+    assert(isEqual(p[0] + p[1] + p[2], 1));
+    assert(isEqual(projected[0] + projected[1] + projected[2], 1));
+    assert(projected[0] >= 0 && projected[1] >= 0 && projected[2] >= 0);
+    assert(isEqual(projected[0], 0) || isEqual(projected[1], 0) || isEqual(projected[2], 0)); // projection is on an edge: one bary coord == 0
+    return distance(l_ij, l_jk, l_ki, p.cwiseMax(0), projected);
+}
+
+void SPmesh::computeMeanIntrinsicEdgeLength() {
+    double totalLen = 0;
+    for (shared_ptr<InEdge> e : _edges) {
+        totalLen += e->length;
+    }
+    _meanIntrinsicEdgeLength = totalLen/_edges.size();
 }
 
 Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point, const Eigen::Vector3d &camPos) {
@@ -1355,9 +1367,12 @@ Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point, const Eige
     double d_jk = distanceToEdge(p, j, k, l_ij, l_jk, l_ki);
     double d_ki = distanceToEdge(p, k, i, l_ij, l_jk, l_ki);
 
-    double OUTLINE = 0.006;
+    if (!_meanIntrinsicEdgeLength)
+        computeMeanIntrinsicEdgeLength();
+    double EXTRINSIC_OUTLINE = _meanIntrinsicEdgeLength/20.;
+    double INTRINSIC_OUTLINE = EXTRINSIC_OUTLINE/3.;
 
-    if (d_ij < OUTLINE || d_jk < OUTLINE || d_ki < OUTLINE) {
+    if (d_ij < EXTRINSIC_OUTLINE || d_jk < EXTRINSIC_OUTLINE || d_ki < EXTRINSIC_OUTLINE) {
         return Vector3d(0, 0, 0);
     }
 
@@ -1373,7 +1388,7 @@ Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point, const Eige
     d_jk = distanceToEdge(intrinsicBary, j, k, l_ij, l_jk, l_ki);
     d_ki = distanceToEdge(intrinsicBary, k, i, l_ij, l_jk, l_ki);
 
-    if (d_ij < OUTLINE || d_jk < OUTLINE || d_ki < OUTLINE) {
+    if (d_ij < INTRINSIC_OUTLINE || d_jk < INTRINSIC_OUTLINE || d_ki < INTRINSIC_OUTLINE) {
         return Vector3d(1, 1, 1);
     }
 
