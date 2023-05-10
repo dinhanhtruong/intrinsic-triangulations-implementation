@@ -70,6 +70,4 @@ private:
     std::unordered_set<std::shared_ptr<ExEdge>> _edges;
     std::unordered_set<std::shared_ptr<ExHalfedge>> _halfedges;
     std::vector<std::shared_ptr<ExFace>> _faces;
-
-    std::unordered_map<std::shared_ptr<ExFace>, int> _faceColors;
 };

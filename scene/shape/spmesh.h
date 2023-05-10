@@ -70,33 +70,32 @@ public:
     Eigen::Vector3d getColor(const Triangle* tri, Eigen::Vector3d point, const Eigen::Vector3d &camPos);
 
 private:
-    /// validator helpers
+    // validator helpers
     void checkCircular(const std::shared_ptr<InHalfedge> &halfedge);
     void checkTwin(const std::shared_ptr<InHalfedge> &halfedge);
     void checkFaces();
     void checkVertices();
     void checkTriangleInequality(const std::shared_ptr<InFace> face);
 
-    /// signpost algos & helpers
-    // old code
-    int getDegree(const std::shared_ptr<InVertex> &v);
-//    Eigen::Vector3d getNormal(Eigen::Vector3d &v1, Eigen::Vector3d &v2, Eigen::Vector3d &v3);
-//    double getArea(Eigen::Vector3d &v1, Eigen::Vector3d &v2, Eigen::Vector3d &v3);
-
-    // math/connectivity heleprs
+    // math heleprs
     double getAngle(Eigen::Vector3d v1, Eigen::Vector3d v2);
     double getAngleFromEdgeLengths(double l_ij, double l_jk, double l_ki);
     double baseLength(double a, double b, double theta);
     double angleBetween(double a, double b);
     bool isEqual(double a, double b, double epsilon=0.00001);
     double argument(Eigen::Vector2d u, Eigen::Vector2d v);
+    double getArea(std::shared_ptr<InFace> face);
     Eigen::Vector3d getBaryCoords(Eigen::Vector3d &p, Eigen::Vector3d &v1, Eigen::Vector3d &v2, Eigen::Vector3d &v3);
     double distanceToEdge(Eigen::Vector3d &p, Eigen::Vector3d &v1, Eigen::Vector3d &v2, double l_ij, double l_jk, double l_ki);
+
+    // mesh helpers
+    int getDegree(const std::shared_ptr<InVertex> &v);
     Eigen::Vector3d getVPos(std::shared_ptr<InVertex> v);
     std::shared_ptr<InEdge> getEdge(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1) const;
     std::shared_ptr<InHalfedge> getHalfEdgeWithSource(std::shared_ptr<InEdge> edge, std::shared_ptr<InVertex> sourceVertex) const;
     void eraseTriangle(std::shared_ptr<InFace> tri);
     std::shared_ptr<InFace> insertTriangle(std::shared_ptr<InVertex> v0, std::shared_ptr<InVertex> v1, std::shared_ptr<InVertex> v2);
+    std::shared_ptr<InVertex> insertCircumcenter(std::shared_ptr<InFace> face);
 
     // algos (in order)
     void updateSignpost(std::shared_ptr<InHalfedge> h_ij);
@@ -119,15 +118,12 @@ private:
     double distance(double l_12, double l_23, double l_31, const Eigen::Vector3d p, const Eigen::Vector3d q);
     std::shared_ptr<InVertex> insertVertex(std::shared_ptr<InFace> face, Eigen::Vector3d barycentricCoords);
     std::pair<double, double> vectorToPoint(double l_ij, double l_jk, double l_ki, const Eigen::Vector3d &i, const Eigen::Vector3d &j, const Eigen::Vector3d &p);
-    void moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab, const Eigen::Vector3d &p);
 
     // triangulation
     bool edgeIsDelaunay(std::shared_ptr<InEdge> edge);
     bool shouldRefine(std::shared_ptr<InFace> tri, double minAngle);
-    std::unordered_set<std::shared_ptr<InFace>> flipToDelaunay(std::unordered_set<std::shared_ptr<InEdge>>& edgesToCheck, double minAngle);
-//    void refineFaces(std::unordered_set<std::shared_ptr<InFace>>& facesToCheck, double minAngle);
-    void delaunayRefinement(double minAngle);
-
+    void flipToDelaunay(std::unordered_set<std::shared_ptr<InEdge>>& edgesToCheck, double minAngle);
+    void delaunayRefine(double minAngle, int maxInsertions);
 
     std::vector<Eigen::Vector3d> _vertices;
     std::vector<Eigen::Vector3i> _facesList;
@@ -141,12 +137,6 @@ private:
         std::shared_ptr<InVertex>,
         std::unordered_map<std::shared_ptr<InVertex>, std::shared_ptr<InEdge>>
     > _vertPairToEdge;
-
-//    std::unordered_set<std::shared_ptr<InVertex>> _newVerts;
-//    std::unordered_set<std::shared_ptr<InEdge>> _newEdges;
-//    std::unordered_set<std::shared_ptr<InHalfedge>> _newHalfedges;
-//    std::unordered_set<std::shared_ptr<InFace>> _newFaces;
-//    std::unordered_set<std::shared_ptr<InEdge>> _newMiddleEdges;
 
     HEmesh _exMesh;
     std::unordered_map<std::shared_ptr<InFace>, int> _faceColors;

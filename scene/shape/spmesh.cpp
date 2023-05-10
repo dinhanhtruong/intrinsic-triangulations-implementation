@@ -229,7 +229,8 @@ void SPmesh::initSignpost() {
 //    unordered_set<shared_ptr<InEdge>> edgesToCheck = _edges;
 //    flipToDelaunay(edgesToCheck, M_PI / 6.0);
 
-    delaunayRefinement(M_PI / 7.1f);
+//    delaunayRefinement(M_PI / 7.0);
+    delaunayRefine(M_PI / 6.1, 100);
 
     validate();
 }
@@ -669,37 +670,6 @@ std::pair<double, double> SPmesh::vectorToPoint(double l_ij, double l_jk, double
     return std::make_pair(r_pi, phi_ip);
 }
 
-// algo 10: moves inserted vertex i to p given by nonnegative barycentric coords inside triangle iab
-void SPmesh::moveVertex(std::shared_ptr<InVertex> i, std::shared_ptr<InFace> iab, const Eigen::Vector3d &p) {
-    std::shared_ptr<InHalfedge> ia = iab->halfedge;
-    double l_ia = ia->edge->length;
-    double l_ab = ia->next->edge->length;
-    double l_bi = ia->next->next->edge->length;
-
-    std::shared_ptr<InVertex> a = ia->next->v; /// TODO: (mehek) has no barycentric pos for initial vertices but can't hardcode coords
-
-    std::pair<double, double> rPhi = vectorToPoint(l_ia, l_ab, l_bi, i->barycentricPos, Vector3d(0, 1, 0), p); // vector from i to p relative to ia
-    double r = rPhi.first;
-    double phi = rPhi.second; // angle of ip relative to ia
-    // since i is inserted, all adjacent faces are coplanar and bigTheta_i=2*pi which means:
-    // angle refHE->ip = angle ia->ip + angle refHE->ia
-    phi = phi + ia->angle;
-
-    // update lengths for adjacent neighbors
-    std::shared_ptr<InHalfedge> ij = i->halfedge;
-    do {
-        double alpha = angleBetween(phi, ij->angle);
-        double l_ij = ij->edge->length;
-        /// note from Mehek: this looks like what baseLength does but for some reason they don't use it?
-        double l_pj = sqrt(r * r + l_ij * l_ij - 2 * r * l_ij * cos(alpha)); // length from j to p (new pos for i)
-        ij->edge->length = l_pj;
-        ij = ij->next->next->twin;
-    } while (ij != i->halfedge);
-
-    // update signpost angles for adjacent halfedges
-    updateVertex(i);
-}
-
 // algo 11: takes the barycentric coords of point on extrinsic face and returns the barycentric coordinates of that position on its intrinsic face
 std::tuple<std::shared_ptr<InFace>, Eigen::Vector3d> SPmesh::pointQuery(std::shared_ptr<ExFace> xyz, Eigen::Vector3d& p) {
     std::shared_ptr<ExHalfedge> xy = xyz->halfedge;
@@ -771,6 +741,16 @@ double SPmesh::argument(Vector2d u, Vector2d v) {
         angle += (2*M_PI);
     }
     return angle;
+}
+
+// HELPER: calculates the area of a face
+double SPmesh::getArea(std::shared_ptr<InFace> face) {
+    double a = face->halfedge->edge->length;
+    double b = face->halfedge->next->edge->length;
+    double c = face->halfedge->next->next->edge->length;
+    double s = (a + b + c) / 2.0;
+
+    return sqrt(s * (s - a) * (s - b) * (s - c));
 }
 
 pair<shared_ptr<InVertex>, shared_ptr<InVertex>> getOrderedVertexPair(shared_ptr<InVertex> v0, shared_ptr<InVertex> v1) {
@@ -985,9 +965,54 @@ bool SPmesh::shouldRefine(std::shared_ptr<InFace> tri, double minAngle) {
     return false;
 }
 
+shared_ptr<InVertex> SPmesh::insertCircumcenter(shared_ptr<InFace> face) {
+    // calculate barycentric circumcenter using edge lengths
+    double l_ij = face->halfedge->edge->length;
+    double l_jk = face->halfedge->next->edge->length;
+    double l_ki = face->halfedge->next->next->edge->length;
+
+    double v_i = l_jk*l_jk * (l_ij*l_ij + l_ki*l_ki - l_jk*l_jk);
+    double v_j = l_ki*l_ki * (l_jk*l_jk + l_ij*l_ij - l_ki*l_ki);
+    double v_k = l_ij*l_ij * (l_ki*l_ki + l_jk*l_jk - l_ij*l_ij);
+
+    Vector3d circumcenter = Vector3d(v_i, v_j, v_k) / (v_i + v_j + v_k);
+
+    assert(isEqual(circumcenter[0] + circumcenter[1] + circumcenter[2], 1));
+
+    // trace to find the face and coordinates where the circumcenter is
+    shared_ptr<InHalfedge> base = face->halfedge;
+    Vector3d barycenter = Vector3d(1.0/3, 1.0/3, 1.0/3);
+
+    // convert to 2d local to get angle
+    Vector2d fi = Vector2d(0.0, 0.0);
+    Vector2d fj = Vector2d(l_ij, 0.0);
+    double theta_i = angleBetween(base->next->next->twin->angle, base->angle) * base->v->bigTheta/(2*M_PI);
+    Vector2d fk = l_ki * Vector2d(cos(theta_i), sin(theta_i));
+
+    Matrix3d A;
+    A << fi(0), fj(0), fk(0),
+         fi(1), fj(1), fk(1),
+         1.0, 1.0, 1.0;
+
+    Vector3d barycenterLocal = A * barycenter;
+    Vector3d circumcenterLocal = A * circumcenter;
+
+    Vector2d traceDir = Vector2d(circumcenterLocal[0] - barycenterLocal[0], circumcenterLocal[1] - barycenterLocal[1]);
+
+    double dist = traceDir.norm();
+    double angle = argument(fj, traceDir);
+
+    auto [endFace, circumBary, dir] = traceVector<InFace>(base, barycenter, dist, angle);
+
+    // don't insert if we're on an edge
+    if (isEqual(circumBary[0], 0, 0.0005) || isEqual(circumBary[1], 0, 0.0005) || isEqual(circumBary[2], 0, 0.0005)) return nullptr;
+
+    return insertVertex(endFace, circumBary);
+}
+
 // course algorithm 1
-unordered_set<shared_ptr<InFace>> SPmesh::flipToDelaunay(unordered_set<shared_ptr<InEdge>>& edgesToCheck, double minAngle) {
-    int maxIterations = 10000; // limit if convergence isn't reached
+void SPmesh::flipToDelaunay(unordered_set<shared_ptr<InEdge>>& edgesToCheck, double minAngle) {
+    int maxFlips = 10000; // limit if convergence isn't reached
 
     // enqueue all edges
     queue<shared_ptr<InEdge>> edgeQ;
@@ -996,11 +1021,11 @@ unordered_set<shared_ptr<InFace>> SPmesh::flipToDelaunay(unordered_set<shared_pt
     }
 
     // keep track of faces that need refinement
-    unordered_set<shared_ptr<InFace>> facesToCheck;
+//    unordered_set<shared_ptr<InFace>> facesToCheck;
 
     // iterate until queue is empty or hit cap
     int i = 0;
-    while (!edgeQ.empty() && i < maxIterations) {
+    while (!edgeQ.empty() && i < maxFlips) {
         shared_ptr<InEdge> nextEdge = edgeQ.front();
         edgeQ.pop();
         edgesToCheck.erase(edgesToCheck.find(nextEdge));
@@ -1008,6 +1033,7 @@ unordered_set<shared_ptr<InFace>> SPmesh::flipToDelaunay(unordered_set<shared_pt
         if (_edges.contains(nextEdge) && !edgeIsDelaunay(nextEdge)) {
             // if not delaunay then flip
             shared_ptr<InEdge> flipped = flipEdge(nextEdge);
+            i++;
 
             // enqueue adjacent edges that aren't already in the queue
             shared_ptr<InEdge> adjacentEdges[4] = {
@@ -1023,135 +1049,145 @@ unordered_set<shared_ptr<InFace>> SPmesh::flipToDelaunay(unordered_set<shared_pt
                 }
             }
 
-            // track adjacent faces that need refinement
-            shared_ptr<InFace> adjacentFace = flipped->halfedge->face;
-            if (!facesToCheck.contains(adjacentFace) && shouldRefine(adjacentFace, minAngle)) {
-                facesToCheck.insert(adjacentFace);
-            }
-            adjacentFace = flipped->halfedge->twin->face;
-            if (!facesToCheck.contains(adjacentFace) && shouldRefine(adjacentFace, minAngle)) {
-                facesToCheck.insert(adjacentFace);
-            }
+//            // track adjacent faces that need refinement
+//            shared_ptr<InFace> adjacentFace = flipped->halfedge->face;
+//            if (!facesToCheck.contains(adjacentFace) && shouldRefine(adjacentFace, minAngle)) {
+//                facesToCheck.insert(adjacentFace);
+//            }
+//            adjacentFace = flipped->halfedge->twin->face;
+//            if (!facesToCheck.contains(adjacentFace) && shouldRefine(adjacentFace, minAngle)) {
+//                facesToCheck.insert(adjacentFace);
+//            }
         }
-        i++;
     }
 
-    return facesToCheck;
+//    return facesToCheck;
 }
 
 // course algorithm 5
-void SPmesh::delaunayRefinement(double minAngle) {
-    int maxIterations = 12000; // limit if convergence isn't reached
+void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
+    int flips = 0;
+    int insertions = 0;
 
-    // initial delaunay flipping
-    unordered_set<shared_ptr<InEdge>> edgesToCheck = _edges;
-    flipToDelaunay(edgesToCheck, minAngle);
-
-    // enqueue all faces to check initially
-    unordered_set<shared_ptr<InFace>> facesToCheck = _faces;
-    queue<shared_ptr<InFace>> faceQ;
-    for (shared_ptr<InFace> face: facesToCheck) {
-        faceQ.push(face);
+    // enqueue all edges
+    deque<shared_ptr<InEdge>> edgeQ;
+    unordered_set<shared_ptr<InEdge>> inEdgeQ = _edges;
+    for (shared_ptr<InEdge> edge: _edges) {
+        edgeQ.push_back(edge);
     }
 
-    // iterate until queue is empty or hit cap
-    int i = 0;
-    while (!faceQ.empty() && i < maxIterations) {
-        if (i % 100 == 0) {
-            cout << i << endl;
+    // enqueue all faces that need refinement
+    /// geometry-central doesn't do anything to avoid enqueuing faces that are already enqueued?
+    priority_queue<pair<double, shared_ptr<InFace>>> faceQ;
+    for (shared_ptr<InFace> face: _faces) {
+        if (shouldRefine(face, minAngle)) {
+            faceQ.push(make_pair(getArea(face), face));
         }
-        edgesToCheck.clear();
+    }
 
-        shared_ptr<InFace> nextFace = faceQ.front();
-        faceQ.pop();
-        facesToCheck.erase(facesToCheck.find(nextFace));
+    // main loop that keeps inserting and flipping
+    do  {
 
-        // check if face still exists and does not meet min angle bound
-        if (_faces.contains(nextFace) && shouldRefine(nextFace, minAngle)) {
-            // calculate barycentric circumcenter using edge lengths
-            double l_ij = nextFace->halfedge->edge->length;
-            double l_jk = nextFace->halfedge->next->edge->length;
-            double l_ki = nextFace->halfedge->next->next->edge->length;
+        // inner loop for flipping to delaunay
+        /// this is redundant given the above flipToDelaunay but the geometry-central codebase also
+        /// includes this redundancy so i'm imitating their implementation for the purposes of debugging
+        while (!edgeQ.empty()) {
+            shared_ptr<InEdge> nextEdge = edgeQ.front();
+            edgeQ.pop_front();
+            inEdgeQ.erase(nextEdge);
+            // if edge no longer exists or is delaunay don't need to flip
+            if (!_edges.contains(nextEdge) || edgeIsDelaunay(nextEdge)) continue;
 
-            double v_i = l_jk*l_jk * (l_ij*l_ij + l_ki*l_ki - l_jk*l_jk);
-            double v_j = l_ki*l_ki * (l_jk*l_jk + l_ij*l_ij - l_ki*l_ki);
-            double v_k = l_ij*l_ij * (l_ki*l_ki + l_jk*l_jk - l_ij*l_ij);
+            // flip edge
+            shared_ptr<InEdge> flipped = flipEdge(nextEdge);
+            flips++;
 
-            Vector3d circumcenter = Vector3d(v_i, v_j, v_k) / (v_i + v_j + v_k);
+            // enqueue adjacent faces that need refinement
+            shared_ptr<InFace> adjacentFace = flipped->halfedge->face;
+            if (shouldRefine(adjacentFace, minAngle)) {
+                faceQ.push(make_pair(getArea(adjacentFace), adjacentFace));
+            }
+            adjacentFace = flipped->halfedge->twin->face;
+            if (shouldRefine(adjacentFace, minAngle)) {
+                faceQ.push(make_pair(getArea(adjacentFace), adjacentFace));
+            }
 
-            assert(isEqual(circumcenter[0] + circumcenter[1] + circumcenter[2], 1));
-
-            // trace to find the face and coordinates where the circumcenter is
-            shared_ptr<InHalfedge> base = nextFace->halfedge;
-            Vector3d barycenter = Vector3d(1.0/3, 1.0/3, 1.0/3);
-
-            // convert to 2d local to get angle
-            Vector2d fi = Vector2d(0.0, 0.0);
-            Vector2d fj = Vector2d(l_ij, 0.0);
-            double theta_i = angleBetween(base->next->next->twin->angle, base->angle) * base->v->bigTheta/(2*M_PI);
-            Vector2d fk = l_ki * Vector2d(cos(theta_i), sin(theta_i));
-            Matrix3d A;
-            A << fi(0), fj(0), fk(0),
-                 fi(1), fj(1), fk(1),
-                 1.0, 1.0, 1.0;
-            Vector3d barycenterLocal = A * barycenter;
-            Vector3d circumcenterLocal = A * circumcenter;
-            Vector2d traceDir = Vector2d(circumcenterLocal[0] - barycenterLocal[0], circumcenterLocal[1] - barycenterLocal[1]);
-
-            double dist = traceDir.norm();
-//            double dist = distance(l_ij, l_jk, l_ki, barycenter, circumcenter);
-
-            double angle = argument(fj, traceDir);
-//            double angle = getAngle(circumcenter - barycenter, Vector3d(-1, 1, 0)); // rep halfedge is (0,1,0) - (1,0,0)
-            auto [endFace, circumBary, dir] = traceVector<InFace>(base, barycenter, dist, angle);
-
-//            cout << circumBary << endl;
-
-            // skip if we're on an edge
-            if (isEqual(circumBary[0], 0, 0.0005) || isEqual(circumBary[1], 0, 0.0005) || isEqual(circumBary[2], 0, 0.0005)) continue;
-
-            // insert circumcenter on that face
-            shared_ptr<InVertex> inserted = insertVertex(endFace, circumBary);
-
-            // check faces adjacent to inserted vertex
-            shared_ptr<InHalfedge> curr = inserted->halfedge;
-            do {
-                shared_ptr<InFace> adjacentFace = curr->face;
-
-                // enqueue adjacent faces that aren't already enqueued
-                if (!facesToCheck.contains(adjacentFace)) {
-                    facesToCheck.insert(adjacentFace);
-                    faceQ.push(adjacentFace);
-                }
-
-                // enqueue edges of adjacent faces that aren't already enqueued
-                shared_ptr<InHalfedge> faceCurr = curr;
-                do {
-                    if (!edgesToCheck.contains(faceCurr->edge)) {
-                        edgesToCheck.insert(faceCurr->edge);
-                    }
-                    faceCurr = faceCurr->next;
-                } while (faceCurr != curr);
-
-                curr = curr->twin->next;
-            } while (curr != inserted->halfedge);
-
-//             after insertion need to once again flip edges
-            unordered_set<shared_ptr<InFace>> newFacesToCheck = flipToDelaunay(edgesToCheck, minAngle);
-
-//             add faces disturbed by flipping back into queue
-            for (shared_ptr<InFace> newFace: newFacesToCheck) {
-                if (!facesToCheck.contains(newFace)) {
-                    facesToCheck.insert(newFace);
-                    faceQ.push(newFace);
+            // enqueue adjacent edges that aren't already in the queue
+            shared_ptr<InEdge> adjacentEdges[4] = {
+                flipped->halfedge->next->edge,
+                flipped->halfedge->next->next->edge,
+                flipped->halfedge->twin->next->edge,
+                flipped->halfedge->twin->next->next->edge
+            };
+            for (shared_ptr<InEdge> adjacent: adjacentEdges) {
+                if (!inEdgeQ.contains(adjacent)) {
+                    edgeQ.push_back(adjacent);
+                    inEdgeQ.insert(adjacent);
                 }
             }
         }
 
-        i++;
-    }
+        // break if max insertions has been reached
+        if (insertions >= maxInsertions) break;
 
-//    cout << "reached delaunay convergence in " << i << " iterations" << endl;
+        // insert a single vertex
+        if (!faceQ.empty()) {
+            // get biggest face
+            shared_ptr<InFace> nextFace = faceQ.top().second;
+            double area = faceQ.top().first;
+            faceQ.pop();
+
+            // check if face still exists, needs refinement, and hasn't changed its area
+            /// I don't know if there should ever be a case where area changes but geometry-central
+            /// checks this so I'm doing it for now to be safe
+            if (!_faces.contains(nextFace) || area != getArea(nextFace) || !shouldRefine(nextFace, minAngle)) continue;
+
+            // insert circumcenter
+            shared_ptr<InVertex> inserted = insertCircumcenter(nextFace);
+
+            // make sure something was actually inserted (does nothing if trace lands on an edge)
+            if (inserted) {
+                insertions++;
+
+                // check new faces next to inserted vertex
+                shared_ptr<InHalfedge> curr = inserted->halfedge;
+                do {
+                    shared_ptr<InFace> adjFace = curr->face;
+
+                    // enqeue if necessary
+                    if (shouldRefine(adjFace, minAngle)) {
+                        faceQ.push(make_pair(getArea(adjFace), adjFace));
+                    }
+
+                    // check adjacent face edges and enqueue if necessary
+                    shared_ptr<InHalfedge> faceHE = curr;
+                    do {
+                        if (!inEdgeQ.contains(faceHE->edge)) {
+                            edgeQ.push_back(faceHE->edge);
+                            inEdgeQ.insert(faceHE->edge);
+                        }
+
+                        faceHE = faceHE->next;
+                    } while (faceHE != curr);
+
+                    curr = curr->next->next->twin;
+                } while (curr != inserted->halfedge);
+            }
+        }
+
+        if (insertions % 10 == 0) {
+            cout << insertions << "/" << maxInsertions << " insertions" << endl;
+        }
+
+    } while (!edgeQ.empty() || !faceQ.empty());
+
+    cout << "finished refining after " << flips << " flips and " << insertions << " insertions" << endl;
+
+    int badFaces = 0;
+    for (shared_ptr<InFace> face: _faces) {
+        if (shouldRefine(face, minAngle)) badFaces++;
+    }
+    cout << badFaces << "/" << _faces.size() << " faces still violate min angle bound" << endl;
 }
 
 //Vector3d SPmesh::getNormal(Vector3d &v1, Vector3d &v2, Vector3d &v3) {
@@ -1331,6 +1367,25 @@ double SPmesh::distanceToEdge(Eigen::Vector3d &p, Eigen::Vector3d &v1, Eigen::Ve
     assert(projected[0] >= 0 && projected[1] >= 0 && projected[2] >= 0);
     assert(isEqual(projected[0], 0) || isEqual(projected[1], 0) || isEqual(projected[2], 0)); // projection is on an edge: one bary coord == 0
     return distance(l_ij, l_jk, l_ki, p.cwiseMax(0), projected);
+
+//    Vector2d fi = Vector2d(0.0, 0.0);
+//    Vector2d fj = Vector2d(l_ij, 0.0);
+//    float theta_i = getAngleFromEdgeLengths(l_ij, l_jk, l_ki);
+//    Vector2d fk = l_ki * Vector2d(cos(theta_i), sin(theta_i));
+//    Matrix3d A;
+//    A << fi(0), fj(0), fk(0),
+//         fi(1), fj(1), fk(1),
+//         1.0, 1.0, 1.0;
+
+//    Vector3d p_loc = A * p;
+//    Vector3d v1_loc = A * v1;
+//    Vector3d v2_loc = A * v2;
+
+
+//    Vector3d b_a = v2_loc - v1_loc;
+//    Vector3d c_a = p_loc - v1_loc;
+
+//    return b_a.cross(c_a).norm() / sqrt(b_a.head<2>().norm());
 }
 
 void SPmesh::computeMeanIntrinsicEdgeLength() {
@@ -1345,11 +1400,11 @@ Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point, const Eige
     shared_ptr<ExFace> exFace = _exMesh.getExTriangle(tri->getIndex());
 
     // calculate barycentric coords on exFace
-    Vector3d v1 = exFace->halfedge->v->pos;
-    Vector3d v2 = exFace->halfedge->next->v->pos;
-    Vector3d v3 = exFace->halfedge->next->next->v->pos;
+    Vector3d v_i = exFace->halfedge->v->pos;
+    Vector3d v_j = exFace->halfedge->next->v->pos;
+    Vector3d v_k = exFace->halfedge->next->next->v->pos;
 
-    Vector3d p = getBaryCoords(point, v1, v2, v3);
+    Vector3d p = getBaryCoords(point, v_i, v_j, v_k);
 
     // trace to get corresponding intrinsic face
     tuple<shared_ptr<InFace>, Vector3d> intrinsic = pointQuery(exFace, p);
