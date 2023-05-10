@@ -34,7 +34,7 @@ typedef float REAL;
 
 // EXTRA OPTIONS
 #define USE_BRDF_IMPORTANCE_SAMPLING true  // applies to diffuse & phong BRDFs
-#define USE_STRATIFIED_SUBPIXEL_SAMPLING true
+#define USE_STRATIFIED_SUBPIXEL_SAMPLING false
 #define DEPTH_OF_FIELD -1 // set focal distance to positive value to enable DoF. Good value for CornellBox is in [2.8,4.2]
 #define DEPTH_OF_FIELD_APERATURE 0.35 // set size of the lens on which rays are scattered for DoF. Higher values = more defocus blur.
 

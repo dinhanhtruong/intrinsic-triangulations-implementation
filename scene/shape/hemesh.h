@@ -57,6 +57,7 @@ public:
     std::shared_ptr<ExFace> makeFace(std::shared_ptr<ExHalfedge> halfedge);
     std::shared_ptr<ExFace> getExTriangle(int index);
     std::unordered_set<std::shared_ptr<ExEdge>> getAllEdges() {return _edges;};
+    std::vector<std::shared_ptr<ExFace>> getAllFaces() {return _faces;};
 
 
 private:

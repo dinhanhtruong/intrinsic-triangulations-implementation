@@ -1430,6 +1430,48 @@ void SPmesh::renderImage(QString& filepath) {
     } else {
         std::cerr << "Error: failed to write image to " << filepath.toStdString() << std::endl;
     }
+
+    // save initial & final raw corner angle values (in radians) to txt files (to be processed in python script). One angle per line.
+    /// 1) initial mesh angles
+//    std::vector<float> angles;
+    ofstream extrinsicAngleFile;
+    std::string filepathString = filepath.toStdString();
+    std::string angleFilepath = filepathString.substr(0, filepathString.length() - 4) + std::string("_extrinsic_angles.txt");// replace ".png" with ".txt"
+    extrinsicAngleFile.open(angleFilepath);
+    for (const shared_ptr<ExFace>& face : _exMesh.getAllFaces()) {
+        shared_ptr<ExHalfedge> halfedge = face->halfedge;
+        double l_i = halfedge->edge->length; // length of edge starting from i
+        double l_j = halfedge->next->edge->length;
+        double l_k = halfedge->next->next->edge->length;
+        // get angle kij (internal angle at vertex i)
+        extrinsicAngleFile <<  getAngleFromEdgeLengths(l_i, l_j, l_k) << "\n";
+        // angle ijk (angle at j)
+        extrinsicAngleFile << getAngleFromEdgeLengths(l_j, l_k, l_i) << "\n";
+        // angle jki (angle at k)
+        extrinsicAngleFile << getAngleFromEdgeLengths(l_k, l_i, l_j) << "\n";
+
+    }
+    extrinsicAngleFile.close();
+
+
+    /// 2) initial extrinsic angles (identical logic)
+    ofstream intrinsicAngleFile;
+    angleFilepath = filepathString.substr(0, filepathString.length() - 4) + std::string("_intrinsic_angles.txt");// replace ".png" with ".txt"
+    intrinsicAngleFile.open(angleFilepath);
+    for (const shared_ptr<InFace>& face : _faces) {
+        shared_ptr<InHalfedge> halfedge = face->halfedge;
+        double l_i = halfedge->edge->length; // length of edge starting from i
+        double l_j = halfedge->next->edge->length;
+        double l_k = halfedge->next->next->edge->length;
+        // get angle kij (internal angle at vertex i)
+        intrinsicAngleFile <<  getAngleFromEdgeLengths(l_i, l_j, l_k) << "\n";
+        // angle ijk (angle at j)
+        intrinsicAngleFile << getAngleFromEdgeLengths(l_j, l_k, l_i) << "\n";
+        // angle jki (angle at k)
+        intrinsicAngleFile << getAngleFromEdgeLengths(l_k, l_i, l_j) << "\n";
+
+    }
+    intrinsicAngleFile.close();
 }
 
 // renders a single frame of a video to the output directory
