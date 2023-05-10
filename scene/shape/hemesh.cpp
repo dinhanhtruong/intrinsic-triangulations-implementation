@@ -46,30 +46,6 @@ shared_ptr<ExFace> HEmesh::makeFace(shared_ptr<ExHalfedge> halfedge) {
     return face;
 }
 
-//int HEmesh::getDegree(const shared_ptr<ExVertex> &v) {
-//    int i = 1;
-//    shared_ptr<ExHalfedge> curr = v->halfedge->twin->next;
-//    while (curr != v->halfedge) {
-//        curr = curr->twin->next;
-//        i += 1;
-//    }
-//    return i;
-//}
-
-//Vector3d HEmesh::getNormal(Vector3d &v1, Vector3d &v2, Vector3d &v3) {
-//    Vector3d ab = v3 - v1;
-//    Vector3d ac = v2 - v1;
-//    Vector3d normal = ac.cross(ab);
-//    normal.normalize();
-//    return normal;
-//}
-
-//double HEmesh::getArea(Vector3d &v1, Vector3d &v2, Vector3d &v3) {
-//    Vector3d AC = v3 - v1;
-//    Vector3d AB = v2 - v1;
-//    return AB.cross(AC).norm()/2.f;
-//}
-
 void HEmesh::checkCircular(const shared_ptr<ExHalfedge> &halfedge) {
     assert(halfedge == halfedge->next->next->next);
     assert(halfedge->face == halfedge->next->face);
