@@ -54,7 +54,6 @@ typedef struct InFace {
 class SPmesh
 {
 public:
-    // SPmesh();
     void initFromVectors(const std::vector<Eigen::Vector3f> &vertices,
                          const std::vector<Eigen::Vector3i> &faces);
     void loadHalfEdges();
@@ -122,7 +121,7 @@ private:
     // triangulation
     bool edgeIsDelaunay(std::shared_ptr<InEdge> edge);
     bool shouldRefine(std::shared_ptr<InFace> tri, double minAngle);
-    void flipToDelaunay(std::unordered_set<std::shared_ptr<InEdge>>& edgesToCheck, double minAngle);
+    void flipToDelaunay(std::unordered_set<std::shared_ptr<InEdge>>& edgesToCheck, double minAngle, int maxFlips);
     void delaunayRefine(double minAngle, int maxInsertions);
 
     std::vector<Eigen::Vector3d> _vertices;

@@ -32,12 +32,6 @@ void SPmesh::initFromVectors(const vector<Vector3f> &vertices,
     _faces = unordered_set<shared_ptr<InFace>>();
     _halfedges = unordered_set<shared_ptr<InHalfedge>>();
 
-//    _newVerts = unordered_set<shared_ptr<InVertex>>();
-//    _newEdges = unordered_set<shared_ptr<InEdge>>();
-//    _newFaces = unordered_set<shared_ptr<InFace>>();
-//    _newHalfedges = unordered_set<shared_ptr<InHalfedge>>();
-//    _newMiddleEdges = unordered_set<shared_ptr<InEdge>>();
-
     _verts.reserve(vertices.size());
     _faces.reserve(faces.size());
     _edges.reserve(faces.size() * 1.5);
@@ -225,14 +219,6 @@ void SPmesh::initSignpost() {
 
     cout << "initialized signpost values" << endl;
     validate();
-
-//    unordered_set<shared_ptr<InEdge>> edgesToCheck = _edges;
-//    flipToDelaunay(edgesToCheck, M_PI / 6.0);
-
-//    delaunayRefinement(M_PI / 7.0);
-    delaunayRefine(M_PI / 6.1, 100);
-
-    validate();
 }
 
 
@@ -257,8 +243,6 @@ void SPmesh::updateSignpost(shared_ptr<InHalfedge> h_ij) {
 
 // angle should be the flat intrinsic angle (NOT phi)
 std::tuple<std::shared_ptr<ExFace>, Eigen::Vector3d, Eigen::Vector2d> SPmesh::traceFromIntrinsicVertex(std::shared_ptr<InVertex> v_i, double distance, double traceAngle) {
-    // TODO: convert to new base-finding algo in traceFromExtrinsic
-
     shared_ptr<ExHalfedge> base;
     Vector3d baryCoords;
     double traceAngleRelativeTheta;
@@ -594,7 +578,6 @@ std::shared_ptr<InEdge> SPmesh::flipEdge(std::shared_ptr<InEdge> ij) {
 
     validate();
 
-//    cout << "flipped edge" << endl;
     return kl->edge;
 }
 
@@ -862,9 +845,6 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
             }
         } else {
             newHalfEdge = make_shared<InHalfedge>(InHalfedge{currVertex, nullptr, nullptr, nullptr, nullptr, -1});
-
-            // TODO: insert into _halfedges or _newHalfedges????
-
             _halfedges.insert(newHalfEdge);
             // edge does not exist: make one and connect it to the new halfEdge
             edge = make_shared<InEdge>(InEdge{newHalfEdge, -1}); // initialize length to -1 to indicate invalid
@@ -888,7 +868,6 @@ shared_ptr<InFace> SPmesh::insertTriangle(shared_ptr<InVertex> v0, shared_ptr<In
     he_0->next = he_1;
     he_1->next = he_2;
     he_2->next = he_0;
-
 
     // set face representative as halfedge whose source is v0 (bary coords = (1,0,0))
     newFace->halfedge = he_0;
@@ -937,7 +916,6 @@ bool SPmesh::edgeIsDelaunay(shared_ptr<InEdge> edge) {
     double theta_l = getAngleFromEdgeLengths(l_lj, l_ji, l_il);
     double theta_k = getAngleFromEdgeLengths(l_ki, l_ij, l_jk);
 
-//    return theta_l + theta_k <= M_PI;
     return theta_l + theta_k <= M_PI;
 }
 
@@ -1011,9 +989,7 @@ shared_ptr<InVertex> SPmesh::insertCircumcenter(shared_ptr<InFace> face) {
 }
 
 // course algorithm 1
-void SPmesh::flipToDelaunay(unordered_set<shared_ptr<InEdge>>& edgesToCheck, double minAngle) {
-    int maxFlips = 10000; // limit if convergence isn't reached
-
+void SPmesh::flipToDelaunay(unordered_set<shared_ptr<InEdge>>& edgesToCheck, double minAngle, int maxFlips) {
     // enqueue all edges
     queue<shared_ptr<InEdge>> edgeQ;
     for (shared_ptr<InEdge> edge: edgesToCheck) {
@@ -1061,6 +1037,8 @@ void SPmesh::flipToDelaunay(unordered_set<shared_ptr<InEdge>>& edgesToCheck, dou
         }
     }
 
+    cout << "mesh is delaunay after " << i << "/" << maxFlips << " flips" << endl;
+
 //    return facesToCheck;
 }
 
@@ -1077,7 +1055,8 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
     }
 
     // enqueue all faces that need refinement
-    /// geometry-central doesn't do anything to avoid enqueuing faces that are already enqueued?
+    /// since faces are only enqueued adjacent to an insert or flip the pointers should always be new so there's
+    /// no point in keeping a set to check which faces are already in the queue
     priority_queue<pair<double, shared_ptr<InFace>>> faceQ;
     for (shared_ptr<InFace> face: _faces) {
         if (shouldRefine(face, minAngle)) {
@@ -1085,12 +1064,15 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
         }
     }
 
+    cout << "beginning delaunay refinement with " << faceQ.size() << "/" << _faces.size() << "faces needing refinement" << endl;
+
     // main loop that keeps inserting and flipping
     do  {
 
         // inner loop for flipping to delaunay
-        /// this is redundant given the above flipToDelaunay but the geometry-central codebase also
-        /// includes this redundancy so i'm imitating their implementation for the purposes of debugging
+        /// this is redundant given the above flipToDelaunay but the geometry-central codebase also includes this redundancy
+        /// it's also easier to just add directly to the face queue here rather than returning
+        /// the faces from flipToDelaunay
         while (!edgeQ.empty()) {
             shared_ptr<InEdge> nextEdge = edgeQ.front();
             edgeQ.pop_front();
@@ -1138,8 +1120,7 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
             faceQ.pop();
 
             // check if face still exists, needs refinement, and hasn't changed its area
-            /// I don't know if there should ever be a case where area changes but geometry-central
-            /// checks this so I'm doing it for now to be safe
+            /// I don't know if there should ever be a case where area changes but I'm checking it for now to be safe
             if (!_faces.contains(nextFace) || area != getArea(nextFace) || !shouldRefine(nextFace, minAngle)) continue;
 
             // insert circumcenter
@@ -1175,7 +1156,7 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
             }
         }
 
-        if (insertions % 10 == 0) {
+        if (insertions % 100 == 0) {
             cout << insertions << "/" << maxInsertions << " insertions" << endl;
         }
 
@@ -1189,14 +1170,6 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
     }
     cout << badFaces << "/" << _faces.size() << " faces still violate min angle bound" << endl;
 }
-
-//Vector3d SPmesh::getNormal(Vector3d &v1, Vector3d &v2, Vector3d &v3) {
-//    Vector3d ab = v3 - v1;
-//    Vector3d ac = v2 - v1;
-//    Vector3d normal = ac.cross(ab);
-//    normal.normalize();
-//    return normal;
-//}
 
 
 //////////////////////////////////////////////
@@ -1297,7 +1270,6 @@ void SPmesh::validate() {
     checkFaces();
     checkVertices();
     validateSignpost(); // signpost-specific assertions
-//    cout<<"passed validation"<<endl;
 }
 
 

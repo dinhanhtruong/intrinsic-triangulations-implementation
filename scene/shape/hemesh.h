@@ -62,9 +62,6 @@ private:
     void checkTwin(const std::shared_ptr<ExHalfedge> &halfedge);
     void checkFaces();
     void checkVertices();
-//    int getDegree(const std::shared_ptr<ExVertex> &v);
-//    Eigen::Vector3d getNormal(Eigen::Vector3d &v1, Eigen::Vector3d &v2, Eigen::Vector3d &v3);
-//    double getArea(Eigen::Vector3d &v1, Eigen::Vector3d &v2, Eigen::Vector3d &v3);
 
     std::unordered_set<std::shared_ptr<ExVertex>> _verts;
     std::unordered_set<std::shared_ptr<ExEdge>> _edges;
