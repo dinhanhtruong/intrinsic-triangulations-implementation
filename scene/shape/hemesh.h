@@ -56,6 +56,8 @@ public:
     std::shared_ptr<ExEdge> makeEdge(std::shared_ptr<ExHalfedge> halfedge);
     std::shared_ptr<ExFace> makeFace(std::shared_ptr<ExHalfedge> halfedge);
     std::shared_ptr<ExFace> getExTriangle(int index);
+    std::unordered_set<std::shared_ptr<ExEdge>> getAllEdges() {return _edges;};
+
 
 private:
     void checkCircular(const std::shared_ptr<ExHalfedge> &halfedge);

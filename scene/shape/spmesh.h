@@ -157,6 +157,6 @@ private:
     bool _video;
 
     double _meanIntrinsicEdgeLength = 0;
-    void computeMeanIntrinsicEdgeLength();
+    void computeMeanExtrinsicEdgeLength();
 };
 

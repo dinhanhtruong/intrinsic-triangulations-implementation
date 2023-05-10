@@ -1408,9 +1408,10 @@ double SPmesh::distanceToEdge(Eigen::Vector3d &p, Eigen::Vector3d &v1, Eigen::Ve
 //    return b_a.cross(c_a).norm() / sqrt(b_a.head<2>().norm());
 }
 
-void SPmesh::computeMeanIntrinsicEdgeLength() {
+void SPmesh::computeMeanExtrinsicEdgeLength() {
     double totalLen = 0;
-    for (shared_ptr<InEdge> e : _edges) {
+    std::unordered_set<std::shared_ptr<ExEdge>> exEdges = _exMesh.getAllEdges();
+    for (const shared_ptr<ExEdge>& e : exEdges) {
         totalLen += e->length;
     }
     _meanIntrinsicEdgeLength = totalLen/_edges.size();
@@ -1437,8 +1438,31 @@ void SPmesh::renderFrame(int frame) {
     renderImage(filepath);
 }
 
+// p is a world space intersection point on the given extrinsic face. edgeID is 0,1 or 2 and denotes edge ij, jk, ki respectively
+double distanceToExtrinsicEdge(Vector3d p, shared_ptr<ExFace> exFace, int edgeID) {
+    assert(edgeID >=0 && edgeID < 3);
+    shared_ptr<ExHalfedge> halfedge;
+    if (edgeID == 1) {
+        halfedge = exFace->halfedge;
+    } else if (edgeID == 2) {
+        halfedge = exFace->halfedge->next;
+    } else {
+        halfedge = exFace->halfedge->next->next;
+    }
+
+    // unit vector along edge
+    Vector3d edge = halfedge->next->v->pos - halfedge->v->pos;
+    edge.normalize();
+    // vector from vertex to p
+    Vector3d u = p - halfedge->v->pos;
+    // get projection of u onto the edge
+    Vector3d proj = (u.dot(edge)) * edge;
+    // want distance of the component of u orthogonal to the projection
+    return (u - proj).norm();
+}
+
 // given a point and triangle on the extrinsic mesh, gets the color on the intrinsic mesh
-Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point) {
+Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d worldPoint) {
     shared_ptr<ExFace> exFace = _exMesh.getExTriangle(tri->getIndex());
 
     // calculate barycentric coords on exFace
@@ -1446,7 +1470,7 @@ Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point) {
     Vector3d v_j = exFace->halfedge->next->v->pos;
     Vector3d v_k = exFace->halfedge->next->next->v->pos;
 
-    Vector3d p = getBaryCoords(point, v_i, v_j, v_k);
+    Vector3d p = getBaryCoords(worldPoint, v_i, v_j, v_k);
 
     // trace to get corresponding intrinsic face
     tuple<shared_ptr<InFace>, Vector3d> intrinsic = pointQuery(exFace, p);
@@ -1456,18 +1480,18 @@ Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point) {
     Vector3d k(0, 0, 1);
 
     // paint extrinsic edges black
-    double l_ij = exFace->halfedge->edge->length;
+    double l_ij = exFace->halfedge->edge->length; // no longer used for extrinsic edge coloring
     double l_jk = exFace->halfedge->next->edge->length;
     double l_ki = exFace->halfedge->next->next->edge->length;
 
-    double d_ij = distanceToEdge(p, i, j, l_ij, l_jk, l_ki);
-    double d_jk = distanceToEdge(p, j, k, l_ij, l_jk, l_ki);
-    double d_ki = distanceToEdge(p, k, i, l_ij, l_jk, l_ki);
+    double d_ij = distanceToExtrinsicEdge(worldPoint, exFace, 0);
+    double d_jk = distanceToExtrinsicEdge(worldPoint, exFace, 1);
+    double d_ki = distanceToExtrinsicEdge(worldPoint, exFace, 2);
 
     if (!_meanIntrinsicEdgeLength)
-        computeMeanIntrinsicEdgeLength();
-    double EXTRINSIC_OUTLINE = _meanIntrinsicEdgeLength/20.;
-    double INTRINSIC_OUTLINE = EXTRINSIC_OUTLINE/3.;
+        computeMeanExtrinsicEdgeLength();
+    double EXTRINSIC_OUTLINE = _meanIntrinsicEdgeLength/110.;
+    double INTRINSIC_OUTLINE = EXTRINSIC_OUTLINE/2.;
 
     if (d_ij < EXTRINSIC_OUTLINE || d_jk < EXTRINSIC_OUTLINE || d_ki < EXTRINSIC_OUTLINE) {
         return Vector3d(0, 0, 0);
