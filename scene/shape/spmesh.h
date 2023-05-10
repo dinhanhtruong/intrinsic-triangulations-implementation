@@ -69,11 +69,13 @@ public:
     std::tuple<std::shared_ptr<InFace>, Eigen::Vector3d> pointQuery(std::shared_ptr<ExFace> xyz, Eigen::Vector3d& p);
 
     // visualization functions
-    void setRenderInfo(Scene* scene, PathTracer* tracer, QImage* image, QString outDir);
+    void setRenderInfo(Scene* scene, PathTracer* tracer, QImage* image, QString outPath, bool video);
     void assignColors(std::unordered_set<std::shared_ptr<InFace>>& faces);
-    void renderImage(int frame);
-    Eigen::Vector3d getColor(const Triangle* tri, Eigen::Vector3d point, const Eigen::Vector3d &camPos);
-    void renderFlipping();
+    void renderImage(QString& filepath);
+    void renderFrame(int frame);
+    Eigen::Vector3d getColor(const Triangle* tri, Eigen::Vector3d point);
+    void renderFlipping(int maxFlips);
+    void renderRefine(double minAngle, int maxInsertions);
 
 private:
     // validator helpers
@@ -151,7 +153,9 @@ private:
     PathTracer* _tracer;
     QImage* _image;
     QRgb* _data;
-    QString _outDir;
+    QString _outPath;
+    bool _video;
+
     double _meanIntrinsicEdgeLength = 0;
     void computeMeanIntrinsicEdgeLength();
 };

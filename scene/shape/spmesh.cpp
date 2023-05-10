@@ -47,6 +47,8 @@ void SPmesh::initFromVectors(const vector<Vector3f> &vertices,
     initSignpost();
     validate();
     cout << "intrinsic mesh validated" << endl;
+
+    assignColors(_faces);
 }
 
 void SPmesh::loadHalfEdges() {
@@ -646,6 +648,12 @@ shared_ptr<InVertex> SPmesh::insertVertex(std::shared_ptr<InFace> face, Vector3d
 
     validate();
 
+    unordered_set<shared_ptr<InFace>> newFaces;
+    newFaces.insert(ijp);
+    newFaces.insert(jkp);
+    newFaces.insert(kip);
+    assignColors(newFaces);
+
     return p;
 }
 
@@ -996,6 +1004,8 @@ shared_ptr<InVertex> SPmesh::insertCircumcenter(shared_ptr<InFace> face) {
 
 // course algorithm 1
 void SPmesh::flipToDelaunay(unordered_set<shared_ptr<InEdge>>& edgesToCheck, double minAngle, int maxFlips) {
+    cout << "beginning delaunay flipping algorithm" << endl;
+
     // enqueue all edges
     queue<shared_ptr<InEdge>> edgeQ;
     for (shared_ptr<InEdge> edge: edgesToCheck) {
@@ -1006,9 +1016,9 @@ void SPmesh::flipToDelaunay(unordered_set<shared_ptr<InEdge>>& edgesToCheck, dou
 //    unordered_set<shared_ptr<InFace>> facesToCheck;
 
     // iterate until queue is empty or hit cap
-    int i = 0;
+    int flips = 0;
     int frame = 0;
-    while (!edgeQ.empty() && i < maxFlips) {
+    while (!edgeQ.empty() && flips < maxFlips) {
         shared_ptr<InEdge> nextEdge = edgeQ.front();
         edgeQ.pop();
         edgesToCheck.erase(edgesToCheck.find(nextEdge));
@@ -1016,7 +1026,11 @@ void SPmesh::flipToDelaunay(unordered_set<shared_ptr<InEdge>>& edgesToCheck, dou
         if (_edges.contains(nextEdge) && !edgeIsDelaunay(nextEdge)) {
             // if not delaunay then flip
             shared_ptr<InEdge> flipped = flipEdge(nextEdge);
-            i++;
+            flips++;
+
+            if (!_video && flips % 100 == 0) {
+                cout << flips << "/" << maxFlips << " flips" << endl;
+            }
 
             // enqueue adjacent edges that aren't already in the queue
             shared_ptr<InEdge> adjacentEdges[4] = {
@@ -1043,11 +1057,12 @@ void SPmesh::flipToDelaunay(unordered_set<shared_ptr<InEdge>>& edgesToCheck, dou
 //            }
 
             frame++;
-            renderImage(frame);
+
+            if (_video) renderFrame(frame);
         }
     }
 
-    cout << "mesh is delaunay after " << i << "/" << maxFlips << " flips" << endl;
+    cout << "mesh is delaunay after " << flips << "/" << maxFlips << " flips" << endl;
 
 //    return facesToCheck;
 }
@@ -1056,6 +1071,7 @@ void SPmesh::flipToDelaunay(unordered_set<shared_ptr<InEdge>>& edgesToCheck, dou
 void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
     int flips = 0;
     int insertions = 0;
+    int frame = 0;
 
     // enqueue all edges
     deque<shared_ptr<InEdge>> edgeQ;
@@ -1074,7 +1090,7 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
         }
     }
 
-    cout << "beginning delaunay refinement with " << faceQ.size() << "/" << _faces.size() << "faces needing refinement" << endl;
+    cout << "beginning delaunay refinement with " << faceQ.size() << "/" << _faces.size() << " faces needing refinement" << endl;
 
     // main loop that keeps inserting and flipping
     do  {
@@ -1093,6 +1109,11 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
             // flip edge
             shared_ptr<InEdge> flipped = flipEdge(nextEdge);
             flips++;
+
+            if (_video && flips % 10 == 0) {
+                frame++;
+                renderFrame(frame);
+            }
 
             // enqueue adjacent faces that need refinement
             shared_ptr<InFace> adjacentFace = flipped->halfedge->face;
@@ -1140,6 +1161,15 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
             if (inserted) {
                 insertions++;
 
+                if (!_video && insertions % 100 == 0) {
+                    cout << insertions << "/" << maxInsertions << " insertions" << endl;
+                }
+
+                if (_video && insertions % 5 == 0) {
+                    frame++;
+                    renderFrame(frame);
+                }
+
                 // check new faces next to inserted vertex
                 shared_ptr<InHalfedge> curr = inserted->halfedge;
                 do {
@@ -1164,10 +1194,6 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
                     curr = curr->next->next->twin;
                 } while (curr != inserted->halfedge);
             }
-        }
-
-        if (insertions % 100 == 0) {
-            cout << insertions << "/" << maxInsertions << " insertions" << endl;
         }
 
     } while (!edgeQ.empty() || !faceQ.empty());
@@ -1287,12 +1313,13 @@ void SPmesh::validate() {
 ///////////// VISUALIZATION //////////////////
 //////////////////////////////////////////////
 
-void SPmesh::setRenderInfo(Scene* scene, PathTracer* tracer, QImage* image, QString outDir) {
+void SPmesh::setRenderInfo(Scene* scene, PathTracer* tracer, QImage* image, QString outPath, bool video) {
     _scene = scene;
     _tracer = tracer;
     _image = image;
     _data = reinterpret_cast<QRgb *>(image->bits());
-    _outDir = outDir;
+    _outPath = outPath;
+    _video = video;
 }
 
 void SPmesh::assignColors(std::unordered_set<std::shared_ptr<InFace>>& faces) {
@@ -1386,10 +1413,9 @@ void SPmesh::computeMeanIntrinsicEdgeLength() {
     _meanIntrinsicEdgeLength = totalLen/_edges.size();
 }
 
-void SPmesh::renderImage(int frame) {
+// raytraces the current scene and saves the image to the filepath
+void SPmesh::renderImage(QString& filepath) {
     _tracer->traceScene(_data, *_scene);
-
-    QString filepath = _outDir + "/" + QStringLiteral("%1").arg(frame, 5, 10, QLatin1Char('0')) + ".png";
 
     bool success = _image->save(filepath);
     if(!success) {
@@ -1402,7 +1428,14 @@ void SPmesh::renderImage(int frame) {
     }
 }
 
-Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point, const Eigen::Vector3d &camPos) {
+// renders a single frame of a video to the output directory
+void SPmesh::renderFrame(int frame) {
+    QString filepath = _outPath + "/" + QStringLiteral("%1").arg(frame, 5, 10, QLatin1Char('0')) + ".png";
+    renderImage(filepath);
+}
+
+// given a point and triangle on the extrinsic mesh, gets the color on the intrinsic mesh
+Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point) {
     shared_ptr<ExFace> exFace = _exMesh.getExTriangle(tri->getIndex());
 
     // calculate barycentric coords on exFace
@@ -1457,12 +1490,38 @@ Vector3d SPmesh::getColor(const Triangle* tri, Eigen::Vector3d point, const Eige
     return colors[_faceColors[inFace]];
 }
 
-void SPmesh::renderFlipping() {
-    assignColors(_faces);
-    renderImage(0);
+void SPmesh::renderFlipping(int maxFlips) {
+    if (_video) {
+        // render initial state
+        renderFrame(0);
 
-    unordered_set<shared_ptr<InEdge>> edgesToCheck = _edges;
-    flipToDelaunay(edgesToCheck, M_PI / 6.0);
+        // perform flipping, intermediate frames rendered in flipToDelaunay
+        unordered_set<shared_ptr<InEdge>> edgesToCheck = _edges;
+        flipToDelaunay(edgesToCheck, M_PI / 6.0, maxFlips);
 
-    renderImage(10000);
+        // render final state
+        renderFrame(10000);
+    }
+    else {
+        unordered_set<shared_ptr<InEdge>> edgesToCheck = _edges;
+        flipToDelaunay(edgesToCheck, M_PI / 6.0, maxFlips);
+        renderImage(_outPath);
+    }
+}
+
+void SPmesh::renderRefine(double minAngle, int maxInsertions) {
+    if (_video) {
+        // render initial state
+        renderFrame(0);
+
+        // perform refinement, intermediate frames rendered in delaunayRefine
+        delaunayRefine(minAngle, maxInsertions);
+
+        // render final state
+        renderFrame(10000);
+    }
+    else {
+        delaunayRefine(minAngle, maxInsertions);
+        renderImage(_outPath);
+    }
 }
