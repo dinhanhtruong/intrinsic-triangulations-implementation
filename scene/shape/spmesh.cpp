@@ -1398,9 +1398,12 @@ double SPmesh::distanceToEdge(Eigen::Vector3d &p, Eigen::Vector3d &v1, Eigen::Ve
 //    Vector3d v1_loc = A * v1;
 //    Vector3d v2_loc = A * v2;
 
+//    Vector3d v = v2_loc - v1_loc;
+//    Vector3d u = p_loc - v1_loc;
 
-//    Vector3d b_a = v2_loc - v1_loc;
-//    Vector3d c_a = p_loc - v1_loc;
+//    Vector3d projected = v1_loc + u.dot(v) * v.normalized();
+//    Vector3d perpendicular = u - projected;
+//    return perpendicular.norm();
 
 //    return b_a.cross(c_a).norm() / sqrt(b_a.head<2>().norm());
 }
