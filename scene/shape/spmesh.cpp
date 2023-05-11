@@ -1072,6 +1072,8 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
     int flips = 0;
     int insertions = 0;
     int frame = 0;
+    int maxRechecks = 3;
+    int rechecks = 0;
 
     // enqueue all edges
     deque<shared_ptr<InEdge>> edgeQ;
@@ -1157,6 +1159,8 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
             // insert circumcenter
             shared_ptr<InVertex> inserted = insertCircumcenter(nextFace);
 
+            if (rechecks > 1) cout << "inserted " << inserted << endl;
+
             // make sure something was actually inserted (does nothing if trace lands on an edge)
             if (inserted) {
                 insertions++;
@@ -1196,7 +1200,36 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
             }
         }
 
-    } while (!edgeQ.empty() || !faceQ.empty());
+        // if queue was empty perform a recheck to insert missed invalid faces back in
+        else {
+            rechecks++;
+            cout << "found empty face queue, performing recheck " << rechecks << "/" << maxRechecks << endl;
+
+            if (edgeQ.empty() && faceQ.empty()) {
+                // check all faces
+                for (shared_ptr<InFace> face: _faces) {
+                    if (shouldRefine(face, minAngle)) {
+                        faceQ.push(make_pair(getArea(face), face));
+                    }
+                }
+
+                // check all edges
+                for (shared_ptr<InEdge> edge: _edges) {
+                    if (!edgeIsDelaunay(edge)) {
+                        edgeQ.push_back(edge);
+                        inEdgeQ.insert(edge);
+                    }
+                }
+            }
+
+            // if both queues are still empty then we can exit
+            if (edgeQ.empty() && faceQ.empty()) break;
+            else {
+                cout << "found " << edgeQ.size() << " bad edges and " << faceQ.size() << " bad faces remaining" << endl;
+            }
+        }
+
+    } while (!edgeQ.empty() || !faceQ.empty() || rechecks < maxRechecks);
 
     cout << "finished refining after " << flips << " flips and " << insertions << " insertions" << endl;
 
