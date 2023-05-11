@@ -1467,6 +1467,7 @@ void SPmesh::renderImage(QString& filepath) {
 void SPmesh::renderFrame(int frame) {
     QString filepath = _outPath + "/" + QStringLiteral("%1").arg(frame, 5, 10, QLatin1Char('0')) + ".png";
     renderImage(filepath);
+    _scene->getCamera().incrementPosition();
 }
 
 // saves angles to file to create histograms

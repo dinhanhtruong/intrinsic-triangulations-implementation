@@ -26,7 +26,7 @@ public:
     void setBVH(const BVH &bvh);
     const BVH& getBVH() const;
 
-    const BasicCamera& getCamera() const;
+    BasicCamera& getCamera();
 
     void setCamera(const BasicCamera& camera);
     void setGlobalData(const CS123SceneGlobalData& data);

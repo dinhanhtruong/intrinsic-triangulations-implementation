@@ -277,7 +277,7 @@ const BVH &Scene::getBVH() const
     return *m_bvh;
 }
 
-const BasicCamera &Scene::getCamera() const
+BasicCamera &Scene::getCamera()
 {
     return m_camera;
 }

@@ -8,6 +8,7 @@ BasicCamera::BasicCamera(Vector3f position, Vector3f direction, Vector3f up, flo
     : m_position(position), m_direction(direction), m_up(up),
       m_heightAngle(heightAngle), m_aspectRatio(aspect)
 {
+    std::cout << direction.transpose() << std::endl;
 }
 
 Matrix4f BasicCamera::getViewMatrix() const
@@ -39,4 +40,11 @@ Matrix4f BasicCamera::getScaleMatrix() const
 
 Vector3f BasicCamera::getPosition() const {
     return m_position;
+}
+
+void BasicCamera::incrementPosition() {
+    Vector3f axis(0, 1, 0);
+    Transform<float, 3, Affine> A(AngleAxisf(M_PI / 180.0, axis));
+    m_direction = A * m_direction;
+    m_position = A * m_position;
 }
