@@ -1159,8 +1159,6 @@ void SPmesh::delaunayRefine(double minAngle, int maxInsertions) {
             // insert circumcenter
             shared_ptr<InVertex> inserted = insertCircumcenter(nextFace);
 
-            if (rechecks > 1) cout << "inserted " << inserted << endl;
-
             // make sure something was actually inserted (does nothing if trace lands on an edge)
             if (inserted) {
                 insertions++;
@@ -1463,7 +1461,16 @@ void SPmesh::renderImage(QString& filepath) {
     } else {
         std::cerr << "Error: failed to write image to " << filepath.toStdString() << std::endl;
     }
+}
 
+// renders a single frame of a video to the output directory
+void SPmesh::renderFrame(int frame) {
+    QString filepath = _outPath + "/" + QStringLiteral("%1").arg(frame, 5, 10, QLatin1Char('0')) + ".png";
+    renderImage(filepath);
+}
+
+// saves angles to file to create histograms
+void SPmesh::saveHistogramFiles(QString& filepath) {
     // save initial & final raw corner angle values (in radians) to txt files (to be processed in python script). One angle per line.
     /// 1) initial mesh angles
 //    std::vector<float> angles;
@@ -1505,12 +1512,6 @@ void SPmesh::renderImage(QString& filepath) {
 
     }
     intrinsicAngleFile.close();
-}
-
-// renders a single frame of a video to the output directory
-void SPmesh::renderFrame(int frame) {
-    QString filepath = _outPath + "/" + QStringLiteral("%1").arg(frame, 5, 10, QLatin1Char('0')) + ".png";
-    renderImage(filepath);
 }
 
 // p is a world space intersection point on the given extrinsic face. edgeID is 0,1 or 2 and denotes edge ij, jk, ki respectively
@@ -1609,6 +1610,8 @@ void SPmesh::renderFlipping(int maxFlips) {
         flipToDelaunay(edgesToCheck, M_PI / 6.0, maxFlips);
         renderImage(_outPath);
     }
+
+    saveHistogramFiles(_outPath);
 }
 
 void SPmesh::renderRefine(double minAngle, int maxInsertions) {
@@ -1626,4 +1629,6 @@ void SPmesh::renderRefine(double minAngle, int maxInsertions) {
         delaunayRefine(minAngle, maxInsertions);
         renderImage(_outPath);
     }
+
+    saveHistogramFiles(_outPath);
 }

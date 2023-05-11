@@ -76,6 +76,7 @@ public:
     Eigen::Vector3d getColor(const Triangle* tri, Eigen::Vector3d point);
     void renderFlipping(int maxFlips);
     void renderRefine(double minAngle, int maxInsertions);
+    void saveHistogramFiles(QString& filepath);
 
 private:
     // validator helpers
